@@ -58,6 +58,7 @@ interface ChefAppProps {
 
 export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const [isConnected, setIsConnected] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [volume, setVolume] = useState(0);
   const [timers, setTimers] = useState<Timer[]>([]);
@@ -123,6 +124,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     if (!keepCamera && mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(track => track.stop());
       mediaStreamRef.current = null;
+      setIsCameraActive(false);
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
@@ -283,6 +285,7 @@ No recipe is currently selected. If the user wants to cook something, suggest th
       // Setup Video Preview
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        setIsCameraActive(true);
         try {
           await videoRef.current.play();
         } catch (playError) {
@@ -480,6 +483,7 @@ No recipe is currently selected. If the user wants to cook something, suggest th
           <CameraFeed
             ref={videoRef}
             isConnected={isConnected}
+            isCameraActive={isCameraActive}
             canvasRef={canvasRef}
           />
 
