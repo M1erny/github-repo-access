@@ -68,6 +68,9 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const [logs, setLogs] = useState<VisionLog[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
+  const [useWideAngle, setUseWideAngle] = useState(false);
 
   // Derived conversation state
   const conversationState = isSpeaking ? 'speaking' : isProcessing ? 'processing' : isListening ? 'listening' : 'idle';
@@ -110,6 +113,22 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
 
   useEffect(() => {
     currentStepRef.current = currentStep;
+  }, [currentStep]);
+
+  // Enumerate available cameras on mount
+  useEffect(() => {
+    const enumerateCameras = async () => {
+      try {
+        // Request permission first to get device labels
+        await navigator.mediaDevices.getUserMedia({ video: true }).then(s => s.getTracks().forEach(t => t.stop()));
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        setCameras(videoDevices);
+      } catch (e) {
+        console.warn('Could not enumerate cameras:', e);
+      }
+    };
+    enumerateCameras();
   }, [currentStep]);
 
   // --- Audio/Video Cleanup ---
@@ -210,6 +229,103 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     ));
   };
 
+  // Switch camera function
+  const switchCamera = async () => {
+    if (cameras.length <= 1) return;
+    
+    const nextIndex = (currentCameraIndex + 1) % cameras.length;
+    setCurrentCameraIndex(nextIndex);
+    
+    // If camera is active, restart with new device
+    if (mediaStreamRef.current && videoRef.current) {
+      // Stop current video tracks
+      mediaStreamRef.current.getVideoTracks().forEach(track => track.stop());
+      
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: cameras[nextIndex].deviceId },
+            width: { ideal: useWideAngle ? 1280 : 640 },
+            height: { ideal: useWideAngle ? 720 : 480 },
+            frameRate: { ideal: 15 }
+          }
+        });
+        
+        // Replace video track in existing stream
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        const oldVideoTrack = mediaStreamRef.current.getVideoTracks()[0];
+        if (oldVideoTrack) {
+          mediaStreamRef.current.removeTrack(oldVideoTrack);
+        }
+        mediaStreamRef.current.addTrack(newVideoTrack);
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStreamRef.current;
+        }
+        
+        toast({
+          title: "Camera Switched",
+          description: cameras[nextIndex].label || `Camera ${nextIndex + 1}`,
+        });
+      } catch (e) {
+        console.error('Failed to switch camera:', e);
+        toast({
+          title: "Camera Switch Failed",
+          description: "Could not switch to the other camera.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  // Toggle wide angle mode
+  const toggleWideAngle = async () => {
+    const newWideAngle = !useWideAngle;
+    setUseWideAngle(newWideAngle);
+    
+    if (mediaStreamRef.current && videoRef.current) {
+      // Stop current video tracks
+      mediaStreamRef.current.getVideoTracks().forEach(track => track.stop());
+      
+      try {
+        const deviceId = cameras[currentCameraIndex]?.deviceId;
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+            width: { ideal: newWideAngle ? 1280 : 640 },
+            height: { ideal: newWideAngle ? 720 : 480 },
+            frameRate: { ideal: 15 },
+            // Request wider field of view if available
+            ...(newWideAngle ? { 
+              aspectRatio: { ideal: 16/9 },
+              // Some devices support zoom - set to minimum for widest view
+              zoom: { ideal: 1 }
+            } : {})
+          }
+        });
+        
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        const oldVideoTrack = mediaStreamRef.current.getVideoTracks()[0];
+        if (oldVideoTrack) {
+          mediaStreamRef.current.removeTrack(oldVideoTrack);
+        }
+        mediaStreamRef.current.addTrack(newVideoTrack);
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStreamRef.current;
+        }
+        
+        toast({
+          title: newWideAngle ? "Wide Angle Enabled" : "Standard View",
+          description: newWideAngle ? "Using wider field of view" : "Using standard camera view",
+        });
+      } catch (e) {
+        console.error('Failed to toggle wide angle:', e);
+        setUseWideAngle(!newWideAngle); // Revert
+      }
+    }
+  };
+
   // Build system instruction with active recipe context
   const buildSystemInstruction = () => {
     let instruction = `You are Chef G-Mini, a helpful cooking assistant.
@@ -281,12 +397,15 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
       nextStartTimeRef.current = outputCtx.currentTime;
 
       // Request Media Stream (Audio + Video)
+      const deviceId = cameras[currentCameraIndex]?.deviceId;
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
         video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          frameRate: { ideal: 15 }
+          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+          width: { ideal: useWideAngle ? 1280 : 640 },
+          height: { ideal: useWideAngle ? 720 : 480 },
+          frameRate: { ideal: 15 },
+          ...(useWideAngle ? { aspectRatio: { ideal: 16/9 }, zoom: { ideal: 1 } } : {})
         }
       });
       mediaStreamRef.current = stream;
@@ -542,6 +661,11 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
             isConnected={isConnected}
             isCameraActive={isCameraActive}
             canvasRef={canvasRef}
+            cameras={cameras}
+            currentCameraIndex={currentCameraIndex}
+            useWideAngle={useWideAngle}
+            onSwitchCamera={switchCamera}
+            onToggleWideAngle={toggleWideAngle}
           />
 
           {/* Controls */}
