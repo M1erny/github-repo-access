@@ -328,7 +328,7 @@ No recipe is currently selected. If the user wants to cook something, suggest th
       const ai = new GoogleGenAI({ apiKey });
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-preview-native-audio-dialog',
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction: buildSystemInstruction(),
@@ -412,13 +412,23 @@ No recipe is currently selected. If the user wants to cook something, suggest th
               });
             }
           },
-          onclose: () => {
-            console.log("Gemini Live Session Closed");
+          onclose: (event) => {
+            console.log("Gemini Live Session Closed", event);
+            toast({
+              title: "AI Disconnected",
+              description: "The AI session has ended. You can reconnect anytime.",
+              variant: "destructive",
+            });
             stopSession(true); // Keep camera on
           },
           onerror: (err) => {
             console.error("Gemini Live Error", err);
-            setError("Connection error. Please try again.");
+            setError(`Connection error: ${err?.message || 'Unknown error'}. Please try again.`);
+            toast({
+              title: "Connection Error",
+              description: err?.message || "Failed to connect to AI. Check your API key.",
+              variant: "destructive",
+            });
             stopSession(true); // Keep camera on
           }
         }
