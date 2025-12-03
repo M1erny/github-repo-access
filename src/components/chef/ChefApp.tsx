@@ -13,6 +13,7 @@ import { RecipePanel } from './RecipePanel';
 import { ActiveRecipeCard } from './ActiveRecipeCard';
 import { useRecipes, Recipe } from '@/hooks/useRecipes';
 import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 // --- Tool Definitions ---
 const createTimerTool: FunctionDeclaration = {
@@ -66,6 +67,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const [volume, setVolume] = useState(0);
   const [timers, setTimers] = useState<Timer[]>([]);
   const [logs, setLogs] = useState<VisionLog[]>([]);
+  const visionIntervalRef = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
@@ -150,6 +152,11 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     if (videoIntervalRef.current) {
       clearInterval(videoIntervalRef.current);
       videoIntervalRef.current = null;
+    }
+    
+    if (visionIntervalRef.current) {
+      clearInterval(visionIntervalRef.current);
+      visionIntervalRef.current = null;
     }
 
     // Only stop camera if explicitly requested (user disconnect)
@@ -325,6 +332,64 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
       }
     }
   };
+
+  // Vision analysis function - runs every 3 seconds
+  const analyzeVision = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current || !isCameraActive) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx || video.videoWidth === 0) return;
+
+    // Capture smaller frame for analysis
+    canvas.width = 320;
+    canvas.height = 240;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-vision', {
+        body: {
+          imageBase64: base64,
+          activeRecipe: activeRecipeRef.current?.title || null
+        }
+      });
+
+      if (error) {
+        console.error('Vision analysis error:', error);
+        return;
+      }
+
+      if (data?.description) {
+        setLogs(prev => [...prev.slice(-19), {
+          time: new Date().toLocaleTimeString(),
+          text: data.description
+        }]);
+      }
+    } catch (e) {
+      console.error('Vision analysis failed:', e);
+    }
+  }, [isCameraActive]);
+
+  // Start/stop vision analysis when camera state changes
+  useEffect(() => {
+    if (isCameraActive && !visionIntervalRef.current) {
+      // Run immediately once, then every 3 seconds
+      analyzeVision();
+      visionIntervalRef.current = window.setInterval(analyzeVision, 3000);
+    } else if (!isCameraActive && visionIntervalRef.current) {
+      clearInterval(visionIntervalRef.current);
+      visionIntervalRef.current = null;
+    }
+
+    return () => {
+      if (visionIntervalRef.current) {
+        clearInterval(visionIntervalRef.current);
+        visionIntervalRef.current = null;
+      }
+    };
+  }, [isCameraActive, analyzeVision]);
 
   // Build system instruction with active recipe context
   const buildSystemInstruction = () => {
