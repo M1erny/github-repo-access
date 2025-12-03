@@ -9,6 +9,9 @@ import { ConnectionButton } from './ConnectionButton';
 import { VisionLogs } from './VisionLogs';
 import { AudioVisualizerSection } from './AudioVisualizer';
 import { TimerSection } from './TimerSection';
+import { RecipePanel } from './RecipePanel';
+import { ActiveRecipeCard } from './ActiveRecipeCard';
+import { useRecipes, Recipe } from '@/hooks/useRecipes';
 import { toast } from '@/hooks/use-toast';
 
 // --- Tool Definitions ---
@@ -43,6 +46,12 @@ const logObservationTool: FunctionDeclaration = {
   },
 };
 
+const getActiveRecipeTool: FunctionDeclaration = {
+  name: 'getActiveRecipe',
+  description: 'Get the currently active recipe the user is cooking, including ingredients and step-by-step instructions.',
+  parameters: { type: Type.OBJECT, properties: {} },
+};
+
 interface ChefAppProps {
   apiKey: string | null;
 }
@@ -55,8 +64,21 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const [logs, setLogs] = useState<VisionLog[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // Recipe management
+  const {
+    recipes,
+    loading: recipesLoading,
+    activeRecipe,
+    setActiveRecipe,
+    addRecipe,
+    deleteRecipe,
+    parseRecipeFromUrl,
+    parseRecipeFromFile,
+  } = useRecipes();
+
   // Refs
   const timersRef = useRef<Timer[]>([]);
+  const activeRecipeRef = useRef<Recipe | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -67,10 +89,14 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoIntervalRef = useRef<number | null>(null);
 
-  // Sync ref with state
+  // Sync refs with state
   useEffect(() => {
     timersRef.current = timers;
   }, [timers]);
+
+  useEffect(() => {
+    activeRecipeRef.current = activeRecipe;
+  }, [activeRecipe]);
 
   // --- Audio/Video Cleanup ---
   const stopSession = useCallback(() => {
@@ -166,6 +192,47 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     ));
   };
 
+  // Build system instruction with active recipe context
+  const buildSystemInstruction = () => {
+    let instruction = `You are Chef G-Mini, an elite expert chef and kitchen assistant.
+
+YOUR CAPABILITIES:
+1. You can SEE via the user's camera.
+2. You can HEAR the user.
+3. You can MANAGE TIMERS.
+4. You can ACCESS the user's saved recipes.
+
+CRITICAL INSTRUCTION FOR VISION:
+- You MUST act as a LITERAL OBSERVER.
+- Use the 'logObservation' tool CONSTANTLY (every few seconds) to describe exactly what is in the frame.
+- Describe ingredients, cookware, steam, colors, and actions.
+- If the view is unclear, say "Vision unclear".
+- DO NOT HALLUCINATE ingredients that are not visible. If you see a pot, just say "pot". Only say "pasta" if you see pasta.
+
+COOKING ASSISTANCE:
+- If you see water boiling or ingredients being added, offer to set a timer.
+- If the user asks about ingredients, look at what is on the table and suggest what goes well with them.
+- Keep your audio responses concise and helpful, like a busy head chef.
+- Use the 'getActiveRecipe' tool to get the current recipe and guide the user through it.`;
+
+    if (activeRecipeRef.current) {
+      instruction += `
+
+ACTIVE RECIPE - "${activeRecipeRef.current.title}":
+The user is currently cooking this recipe. Guide them through it step by step!
+
+INGREDIENTS:
+${activeRecipeRef.current.ingredients?.map((ing, i) => `${i + 1}. ${ing}`).join('\n') || 'No ingredients listed'}
+
+INSTRUCTIONS:
+${activeRecipeRef.current.instructions?.map((step, i) => `Step ${i + 1}: ${step}`).join('\n') || 'No instructions listed'}
+
+Help the user follow along, suggest timers when needed, and provide tips based on what you see in the camera.`;
+    }
+
+    return instruction;
+  };
+
   // --- Gemini Connection ---
   const connectToGemini = async () => {
     if (!apiKey) {
@@ -241,27 +308,9 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
         model: 'gemini-2.5-flash-preview-native-audio-dialog',
         config: {
           responseModalities: [Modality.AUDIO],
-          systemInstruction: `You are Chef G-Mini, an elite expert chef and kitchen assistant.
-
-          YOUR CAPABILITIES:
-          1. You can SEE via the user's camera.
-          2. You can HEAR the user.
-          3. You can MANAGE TIMERS.
-
-          CRITICAL INSTRUCTION FOR VISION:
-          - You MUST act as a LITERAL OBSERVER.
-          - Use the 'logObservation' tool CONSTANTLY (every few seconds) to describe exactly what is in the frame.
-          - Describe ingredients, cookware, steam, colors, and actions.
-          - If the view is unclear, say "Vision unclear".
-          - DO NOT HALLUCINATE ingredients that are not visible. If you see a pot, just say "pot". Only say "pasta" if you see pasta.
-
-          COOKING ASSISTANCE:
-          - If you see water boiling or ingredients being added, offer to set a timer.
-          - If the user asks about ingredients, look at what is on the table and suggest what goes well with them.
-          - Keep your audio responses concise and helpful, like a busy head chef.
-          `,
+          systemInstruction: buildSystemInstruction(),
           tools: [
-            { functionDeclarations: [createTimerTool, getTimersTool, logObservationTool] }
+            { functionDeclarations: [createTimerTool, getTimersTool, logObservationTool, getActiveRecipeTool] }
           ]
         },
         callbacks: {
@@ -270,7 +319,9 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
             console.log("Gemini Live Session Opened");
             toast({
               title: "Connected",
-              description: "Chef G-Mini is ready to help!",
+              description: activeRecipeRef.current 
+                ? `Chef G-Mini is ready to guide you through "${activeRecipeRef.current.title}"!`
+                : "Chef G-Mini is ready to help!",
             });
           },
           onmessage: async (msg: LiveServerMessage) => {
@@ -313,6 +364,17 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
                   const { text } = fc.args as any;
                   setLogs(prev => [...prev.slice(-19), { time: new Date().toLocaleTimeString(), text }]);
                   result = { result: "logged" };
+                } else if (fc.name === 'getActiveRecipe') {
+                  const recipe = activeRecipeRef.current;
+                  if (recipe) {
+                    result = {
+                      title: recipe.title,
+                      ingredients: recipe.ingredients,
+                      instructions: recipe.instructions,
+                    };
+                  } else {
+                    result = { result: "No active recipe selected" };
+                  }
                 }
 
                 responses.push({
@@ -377,10 +439,24 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     <div className="min-h-screen bg-background text-foreground p-4 flex flex-col items-center">
       <Header />
 
-      {/* Main Grid */}
-      <main className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-        {/* Left Column: Vision & Connection */}
-        <section className="flex flex-col gap-4">
+      {/* Main Grid - 3 columns on larger screens */}
+      <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-6xl">
+        {/* Left Column: Recipes */}
+        <section className="lg:col-span-1 order-3 lg:order-1">
+          <RecipePanel
+            recipes={recipes}
+            activeRecipe={activeRecipe}
+            onSelectRecipe={setActiveRecipe}
+            onDeleteRecipe={deleteRecipe}
+            onAddRecipe={addRecipe}
+            onParseUrl={parseRecipeFromUrl}
+            onParseFile={parseRecipeFromFile}
+            loading={recipesLoading}
+          />
+        </section>
+
+        {/* Center Column: Vision & Connection */}
+        <section className="lg:col-span-1 flex flex-col gap-4 order-1 lg:order-2">
           <CameraFeed
             ref={videoRef}
             isConnected={isConnected}
@@ -411,8 +487,10 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
           <VisionLogs logs={logs} />
         </section>
 
-        {/* Right Column: Timers & Audio */}
-        <section className="flex flex-col gap-4">
+        {/* Right Column: Active Recipe, Timers & Audio */}
+        <section className="flex flex-col gap-4 order-2 lg:order-3">
+          {activeRecipe && <ActiveRecipeCard recipe={activeRecipe} />}
+          
           <AudioVisualizerSection isSpeaking={isSpeaking} volume={volume} />
           
           <TimerSection
