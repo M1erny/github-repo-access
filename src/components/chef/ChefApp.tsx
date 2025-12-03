@@ -17,12 +17,12 @@ import { toast } from '@/hooks/use-toast';
 // --- Tool Definitions ---
 const createTimerTool: FunctionDeclaration = {
   name: 'createTimer',
-  description: 'Create a new cooking timer. Use this when the user asks or when you visually observe an event requiring a timer (e.g. pasta entering water).',
+  description: 'Create a new cooking timer. AUTOMATICALLY call this when you observe cooking events that need timing: pasta/noodles entering boiling water, meat hitting a pan, vegetables starting to sauté, anything going into an oven, etc. Do NOT ask permission - just create the timer immediately when you see the cooking action begin.',
   parameters: {
     type: Type.OBJECT,
     properties: {
       label: { type: Type.STRING, description: 'Label for the timer (e.g., Pasta, Chicken, Rice)' },
-      durationSeconds: { type: Type.NUMBER, description: 'Duration in seconds' },
+      durationSeconds: { type: Type.NUMBER, description: 'Duration in seconds based on what is being cooked' },
     },
     required: ['label', 'durationSeconds'],
   },
@@ -199,7 +199,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
 YOUR CAPABILITIES:
 1. You can SEE via the user's camera.
 2. You can HEAR the user.
-3. You can MANAGE TIMERS.
+3. You can MANAGE TIMERS - AUTOMATICALLY create them when needed!
 4. You can ACCESS the user's saved recipes using the getActiveRecipe tool.
 
 CRITICAL INSTRUCTION FOR VISION:
@@ -209,20 +209,21 @@ CRITICAL INSTRUCTION FOR VISION:
 - If the view is unclear, say "Vision unclear".
 - DO NOT HALLUCINATE ingredients that are not visible.
 
-RECIPE GUIDANCE - THIS IS YOUR PRIMARY FUNCTION:
-- When a recipe is active, you are the user's cooking guide. Proactively help them through each step!
-- Call 'getActiveRecipe' frequently to check the current recipe and track progress.
-- Guide users step-by-step: "Now we're on step 3: sauté the onions until golden..."
-- When you see them complete a step, congratulate them and move to the next.
-- Suggest timers for cooking steps: "This needs to simmer for 10 minutes, want me to set a timer?"
-- If they seem stuck, offer tips: "I see you're chopping - remember to dice the onion finely for this recipe."
-- Answer questions about the recipe: ingredients, substitutions, techniques.
-- Warn about common mistakes: "Be careful not to overcook the garlic, it burns quickly!"
+AUTOMATIC TIMER CREATION - CRITICAL:
+- When you SEE food going into boiling water (pasta, noodles, vegetables) - IMMEDIATELY create a timer. Don't ask, just do it!
+- When you SEE meat/fish hitting a hot pan - IMMEDIATELY create a timer for the sear time.
+- When you SEE something going into an oven - IMMEDIATELY create a timer.
+- Use your cooking knowledge to set appropriate durations (e.g., pasta ~8-10 min, eggs ~6-12 min depending on style).
+- Announce the timer briefly: "Starting an 8 minute timer for the pasta!"
 
-COOKING ASSISTANCE:
-- If you see water boiling or ingredients being added, offer to set a timer.
-- If the user asks about ingredients, look at what is on the table and suggest what goes well with them.
-- Keep your audio responses concise and helpful, like a busy head chef.`;
+RECIPE GUIDANCE:
+- When a recipe is active, proactively guide users step-by-step.
+- Call 'getActiveRecipe' to check the current recipe and track progress.
+- When you see them complete a step, move to the next.
+- If they seem stuck, offer tips.
+- Warn about common mistakes.
+
+Keep responses concise like a busy head chef.`;
 
     if (activeRecipeRef.current) {
       instruction += `
