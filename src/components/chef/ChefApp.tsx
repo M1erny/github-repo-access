@@ -7,7 +7,7 @@ import { Header } from './Header';
 import { CameraFeed } from './CameraFeed';
 import { ConnectionButton } from './ConnectionButton';
 import { VisionLogs } from './VisionLogs';
-import { AudioVisualizerSection } from './AudioVisualizer';
+import { ConversationIndicator } from './ConversationIndicator';
 import { TimerSection } from './TimerSection';
 import { RecipePanel } from './RecipePanel';
 import { ActiveRecipeCard } from './ActiveRecipeCard';
@@ -61,11 +61,16 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [volume, setVolume] = useState(0);
   const [timers, setTimers] = useState<Timer[]>([]);
   const [logs, setLogs] = useState<VisionLog[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
+
+  // Derived conversation state
+  const conversationState = isSpeaking ? 'speaking' : isProcessing ? 'processing' : isListening ? 'listening' : 'idle';
 
   // Recipe management
   const {
@@ -142,6 +147,8 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     setIsConnected(false);
     setIsConnecting(false);
     setIsSpeaking(false);
+    setIsListening(false);
+    setIsProcessing(false);
     setVolume(0);
   }, []);
 
@@ -356,6 +363,7 @@ No recipe is currently selected. If the user wants to cook something, suggest th
           onopen: () => {
             setIsConnected(true);
             setIsConnecting(false);
+            setIsListening(true); // Start in listening mode
             console.log("Gemini Live Session Opened");
             toast({
               title: "Connected",
@@ -365,10 +373,36 @@ No recipe is currently selected. If the user wants to cook something, suggest th
             });
           },
           onmessage: async (msg: LiveServerMessage) => {
+            console.log("Gemini message:", msg);
+            
+            // Handle turn completion - user can speak again
+            if (msg.serverContent?.turnComplete) {
+              console.log("Turn complete - listening for user");
+              setIsSpeaking(false);
+              setIsProcessing(false);
+              setIsListening(true);
+            }
+            
+            // Handle interruption
+            if (msg.serverContent?.interrupted) {
+              console.log("AI was interrupted");
+              setIsSpeaking(false);
+              setIsProcessing(false);
+              setIsListening(true);
+              // Clear any pending audio
+              sourcesRef.current.forEach(source => {
+                try { source.stop(); } catch(e) {}
+              });
+              sourcesRef.current.clear();
+              nextStartTimeRef.current = audioContextRef.current?.currentTime || 0;
+            }
+
             // Handle Audio Output
             const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (audioData) {
               setIsSpeaking(true);
+              setIsListening(false);
+              setIsProcessing(false);
               const buffer = await decodeAudioData(base64ToUint8Array(audioData), outputCtx);
               const bufferSource = outputCtx.createBufferSource();
               bufferSource.buffer = buffer;
@@ -384,12 +418,17 @@ No recipe is currently selected. If the user wants to cook something, suggest th
               sourcesRef.current.add(bufferSource);
               bufferSource.onended = () => {
                 sourcesRef.current.delete(bufferSource);
-                if (sourcesRef.current.size === 0) setIsSpeaking(false);
+                if (sourcesRef.current.size === 0) {
+                  setIsSpeaking(false);
+                  setIsListening(true);
+                }
               };
             }
 
-            // Handle Tool Calls
+            // Handle Tool Calls - show processing state
             if (msg.toolCall) {
+              setIsProcessing(true);
+              setIsListening(false);
               const responses = [];
               for (const fc of msg.toolCall.functionCalls) {
                 let result: any = { result: "ok" };
@@ -554,7 +593,11 @@ No recipe is currently selected. If the user wants to cook something, suggest th
             />
           )}
           
-          <AudioVisualizerSection isSpeaking={isSpeaking} volume={volume} />
+          <ConversationIndicator 
+            state={conversationState} 
+            isConnected={isConnected} 
+            volume={volume} 
+          />
           
           <TimerSection
             timers={timers}
