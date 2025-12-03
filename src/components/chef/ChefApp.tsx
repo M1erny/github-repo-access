@@ -283,7 +283,11 @@ No recipe is currently selected. If the user wants to cook something, suggest th
       // Setup Video Preview
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        try {
+          await videoRef.current.play();
+        } catch (playError) {
+          console.warn('Autoplay blocked, video will play on user interaction:', playError);
+        }
       }
 
       // Audio Source and Analyzer
