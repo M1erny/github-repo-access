@@ -36,11 +36,11 @@ const getTimersTool: FunctionDeclaration = {
 
 const logObservationTool: FunctionDeclaration = {
   name: 'logObservation',
-  description: 'Log a brief visual observation of the video feed. Call this tool FREQUENTLY (every 2-3 seconds) to describe the scene.',
+  description: 'Log a brief visual observation of the video feed. Call this tool periodically (every 5-10 seconds) when you notice something relevant to cooking - ingredients being prepared, cooking progress, technique being used, etc.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      text: { type: Type.STRING, description: 'Literal description of the visual scene (e.g. "Empty pot on stove", "Hand holding a red onion"). Do not hallucinate.' },
+      text: { type: Type.STRING, description: 'Brief cooking-relevant observation (e.g. "Onions sautéing in pan", "Adding pasta to boiling water", "Stirring sauce"). Focus on cooking actions.' },
     },
     required: ['text'],
   },
@@ -48,7 +48,7 @@ const logObservationTool: FunctionDeclaration = {
 
 const getActiveRecipeTool: FunctionDeclaration = {
   name: 'getActiveRecipe',
-  description: 'Get the currently active recipe including the CURRENT STEP the user is on. Returns: title, ingredients, instructions, currentStep (1-indexed), currentStepText, and totalSteps. Use this to know exactly which step to guide them through.',
+  description: 'IMPORTANT: Call this tool BEFORE answering ANY question about the recipe, ingredients, steps, timing, or cooking instructions. Returns the full recipe with title, ingredients list, all instructions, currentStep, currentStepText, and totalSteps. ALWAYS use this tool data to answer - never guess or use general knowledge when a recipe is active.',
   parameters: { type: Type.OBJECT, properties: {} },
 };
 
@@ -212,53 +212,39 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
 
   // Build system instruction with active recipe context
   const buildSystemInstruction = () => {
-    let instruction = `You are Chef G-Mini, an elite expert chef and kitchen assistant.
+    let instruction = `You are Chef G-Mini, a helpful cooking assistant.
 
-YOUR PRIMARY ROLE:
-Guide the user through cooking! If a recipe is active, YOU ARE THE RECIPE GUIDE. Reference the recipe constantly - tell them what step they're on, what's next, and help them succeed.
+CRITICAL RULE - RECIPE ACCURACY:
+When a user asks about the recipe, ingredients, steps, timing, or anything recipe-related, you MUST:
+1. FIRST call the 'getActiveRecipe' tool to get the exact recipe data
+2. ONLY answer using the data returned from that tool
+3. NEVER guess, assume, or use general cooking knowledge for recipe-specific questions
+4. If you're unsure, call getActiveRecipe again to verify
 
-YOUR CAPABILITIES:
-1. You can SEE via the user's camera - observe their cooking progress
-2. You can HEAR the user and respond to questions
-3. You can MANAGE TIMERS - create them automatically when needed
-4. You have ACCESS to the user's recipe data - USE IT to guide them!
+YOUR TOOLS:
+- 'getActiveRecipe': Call this BEFORE answering ANY recipe question. It returns the exact recipe the user uploaded.
+- 'createTimer': Create cooking timers. Use recipe timing when available.
+- 'logObservation': Log what you see in the camera (use periodically for cooking-relevant observations).
+- 'getTimers': Check active timers.
 
-RECIPE GUIDANCE (HIGHEST PRIORITY):
-- When a recipe is active, your #1 job is guiding them through it step-by-step
-- Reference specific ingredients, quantities, and timing FROM THE RECIPE
-- When you see them complete a step, announce it and tell them the next step
-- Answer questions by referencing the recipe instructions
-- If they ask "what's next?" or seem stuck, tell them the current/next step
+VISION LOGGING:
+- Call 'logObservation' every 5-10 seconds when you notice cooking activity
+- Focus on cooking actions: "adding ingredients", "stirring", "checking doneness"
 
-VISION OBSERVATIONS:
-- Use 'logObservation' periodically to note what you see (every 10-15 seconds)
-- Focus on cooking-relevant observations: is the pan hot enough? Is something browning?
-- DO NOT just describe the scene robotically - tie observations to the cooking task
-
-AUTOMATIC TIMERS:
-- When you SEE food going into boiling water, a hot pan, or oven - create a timer
-- Get duration FROM THE RECIPE FIRST, then fall back to cooking knowledge
-- Announce: "Starting X minute timer for [item] - as per the recipe!"
-
-Keep responses conversational and helpful, like a friendly sous chef.`;
+CONVERSATION STYLE:
+- Be helpful and conversational
+- When guiding through a recipe, reference exact step numbers and ingredients
+- Proactively suggest the next step when you see them complete one`;
 
     if (activeRecipeRef.current) {
       instruction += `
 
-ACTIVE RECIPE - "${activeRecipeRef.current.title}":
-You are ACTIVELY guiding the user through this recipe. Be proactive!
-
-INGREDIENTS NEEDED:
-${activeRecipeRef.current.ingredients?.map((ing, i) => `${i + 1}. ${ing}`).join('\n') || 'No ingredients listed'}
-
-STEP-BY-STEP INSTRUCTIONS:
-${activeRecipeRef.current.instructions?.map((step, i) => `Step ${i + 1}: ${step}`).join('\n') || 'No instructions listed'}
-
-Start by greeting them and asking which step they're on, or if they're ready to begin from step 1.`;
+A RECIPE IS CURRENTLY ACTIVE: "${activeRecipeRef.current.title}"
+The user has loaded this recipe and wants guidance. When they ask about it, ALWAYS call getActiveRecipe to get the exact data before answering.`;
     } else {
       instruction += `
 
-No recipe is currently selected. If the user wants to cook something, suggest they add a recipe from the panel on the left, or you can help them freestyle cook based on what you see!`;
+No recipe is currently selected. Help them freestyle or suggest adding a recipe.`;
     }
 
     return instruction;
