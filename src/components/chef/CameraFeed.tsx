@@ -16,6 +16,7 @@ export const CameraFeed = forwardRef<HTMLVideoElement, CameraFeedProps>(
             "w-full h-full object-cover transition-opacity duration-300",
             isConnected ? "opacity-100" : "opacity-30"
           )}
+          autoPlay
           muted
           playsInline
         />
