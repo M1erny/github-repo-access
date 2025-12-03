@@ -99,7 +99,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   }, [activeRecipe]);
 
   // --- Audio/Video Cleanup ---
-  const stopSession = useCallback(() => {
+  const stopSession = useCallback((keepCamera = false) => {
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
@@ -114,18 +114,18 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     });
     sourcesRef.current.clear();
 
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
-    }
-
     if (videoIntervalRef.current) {
       clearInterval(videoIntervalRef.current);
       videoIntervalRef.current = null;
     }
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+    // Only stop camera if explicitly requested (user disconnect)
+    if (!keepCamera && mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
     }
 
     sessionPromiseRef.current = null;
@@ -411,12 +411,12 @@ No recipe is currently selected. If the user wants to cook something, suggest th
           },
           onclose: () => {
             console.log("Gemini Live Session Closed");
-            stopSession();
+            stopSession(true); // Keep camera on
           },
           onerror: (err) => {
             console.error("Gemini Live Error", err);
             setError("Connection error. Please try again.");
-            stopSession();
+            stopSession(true); // Keep camera on
           }
         }
       });
