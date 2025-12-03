@@ -48,7 +48,7 @@ const logObservationTool: FunctionDeclaration = {
 
 const getActiveRecipeTool: FunctionDeclaration = {
   name: 'getActiveRecipe',
-  description: 'Get the currently active recipe the user is cooking, including ingredients and step-by-step instructions.',
+  description: 'Get the currently active recipe including the CURRENT STEP the user is on. Returns: title, ingredients, instructions, currentStep (1-indexed), currentStepText, and totalSteps. Use this to know exactly which step to guide them through.',
   parameters: { type: Type.OBJECT, properties: {} },
 };
 
@@ -64,6 +64,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const [timers, setTimers] = useState<Timer[]>([]);
   const [logs, setLogs] = useState<VisionLog[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState(0);
 
   // Recipe management
   const {
@@ -80,6 +81,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   // Refs
   const timersRef = useRef<Timer[]>([]);
   const activeRecipeRef = useRef<Recipe | null>(null);
+  const currentStepRef = useRef<number>(0);
   const nextStartTimeRef = useRef<number>(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -97,7 +99,12 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
 
   useEffect(() => {
     activeRecipeRef.current = activeRecipe;
+    setCurrentStep(0); // Reset step when recipe changes
   }, [activeRecipe]);
+
+  useEffect(() => {
+    currentStepRef.current = currentStep;
+  }, [currentStep]);
 
   // --- Audio/Video Cleanup ---
   const stopSession = useCallback((keepCamera = false) => {
@@ -386,11 +393,15 @@ No recipe is currently selected. If the user wants to cook something, suggest th
                   result = { result: "logged" };
                 } else if (fc.name === 'getActiveRecipe') {
                   const recipe = activeRecipeRef.current;
+                  const step = currentStepRef.current;
                   if (recipe) {
                     result = {
                       title: recipe.title,
                       ingredients: recipe.ingredients,
                       instructions: recipe.instructions,
+                      currentStep: step + 1,
+                      currentStepText: recipe.instructions?.[step] || '',
+                      totalSteps: recipe.instructions?.length || 0,
                     };
                   } else {
                     result = { result: "No active recipe selected" };
@@ -520,7 +531,13 @@ No recipe is currently selected. If the user wants to cook something, suggest th
 
         {/* Right Column: Active Recipe, Timers & Audio */}
         <section className="flex flex-col gap-4 order-2 lg:order-3">
-          {activeRecipe && <ActiveRecipeCard recipe={activeRecipe} />}
+          {activeRecipe && (
+            <ActiveRecipeCard 
+              recipe={activeRecipe} 
+              currentStep={currentStep}
+              onStepChange={setCurrentStep}
+            />
+          )}
           
           <AudioVisualizerSection isSpeaking={isSpeaking} volume={volume} />
           
