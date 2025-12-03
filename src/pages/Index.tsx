@@ -1,14 +1,11 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { ChefApp } from '@/components/chef/ChefApp';
 
 const Index = () => {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
-    </div>
-  );
+  // In production, this would come from environment/secrets
+  // For now, we'll prompt users to add their API key via Lovable Cloud
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || null;
+
+  return <ChefApp apiKey={apiKey} />;
 };
 
 export default Index;
