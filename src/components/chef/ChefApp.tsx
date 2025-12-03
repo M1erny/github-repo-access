@@ -58,6 +58,7 @@ interface ChefAppProps {
 
 export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [volume, setVolume] = useState(0);
@@ -139,6 +140,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
 
     sessionPromiseRef.current = null;
     setIsConnected(false);
+    setIsConnecting(false);
     setIsSpeaking(false);
     setVolume(0);
   }, []);
@@ -262,6 +264,16 @@ No recipe is currently selected. If the user wants to cook something, suggest th
       return;
     }
 
+    // Prevent multiple connection attempts
+    if (isConnecting || isConnected) {
+      console.log("Already connecting or connected, ignoring...");
+      return;
+    }
+
+    // Clean up any existing session first
+    stopSession(true);
+
+    setIsConnecting(true);
     setError(null);
     setLogs([]);
     
@@ -343,10 +355,11 @@ No recipe is currently selected. If the user wants to cook something, suggest th
         callbacks: {
           onopen: () => {
             setIsConnected(true);
+            setIsConnecting(false);
             console.log("Gemini Live Session Opened");
             toast({
               title: "Connected",
-              description: activeRecipeRef.current 
+              description: activeRecipeRef.current
                 ? `Chef G-Mini is ready to guide you through "${activeRecipeRef.current.title}"!`
                 : "Chef G-Mini is ready to help!",
             });
@@ -472,6 +485,7 @@ No recipe is currently selected. If the user wants to cook something, suggest th
     } catch (e: any) {
       console.error(e);
       setError(e.message || "Failed to connect");
+      setIsConnecting(false);
       stopSession();
     }
   };
@@ -509,6 +523,7 @@ No recipe is currently selected. If the user wants to cook something, suggest th
           <div className="flex flex-col gap-4">
             <ConnectionButton
               isConnected={isConnected}
+              isConnecting={isConnecting}
               onConnect={connectToGemini}
               onDisconnect={stopSession}
             />
