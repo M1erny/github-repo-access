@@ -28,20 +28,52 @@ serve(async (req) => {
       );
     }
 
-    let systemPrompt = `You are a cooking vision assistant. Describe what you see in the kitchen/cooking scene in ONE brief sentence (max 15 words). Focus on:
-- What ingredients or food items are visible
-- Cooking actions happening (stirring, chopping, boiling, etc.)
-- State of cooking (raw, cooking, done, browning, etc.)
-- Any kitchen tools or equipment being used
+    // Build system prompt with recipe awareness for timer detection
+    let systemPrompt = `You are a cooking vision assistant. Analyze the kitchen scene and respond with a JSON object.
 
-Be concise and cooking-focused. Example outputs:
-- "Onions sautéing in pan, turning golden brown"
-- "Chopping vegetables on cutting board"
-- "Pasta boiling in large pot of water"
-- "Empty kitchen counter with ingredients laid out"`;
+Your response MUST be valid JSON with this structure:
+{
+  "description": "Brief description of what you see (max 15 words)",
+  "timerSuggestion": null or { "label": "item name", "durationSeconds": number, "reason": "why" }
+}
 
+TIMER DETECTION - Create a timer suggestion when you see:
+- Food being added to boiling water (pasta, noodles, vegetables, eggs)
+- Meat/protein placed on a hot pan or grill
+- Items placed in an oven
+- Food starting to cook that needs timing (sautéing onions, toasting bread, etc.)
+
+DO NOT suggest a timer for:
+- Prep work (cutting, measuring, mixing)
+- Food already cooking (if you've seen it before)
+- Empty pans heating up`;
+
+    // Add recipe context for accurate timing
     if (activeRecipe) {
-      systemPrompt += `\n\nActive recipe: "${activeRecipe}". Note if actions relate to this recipe.`;
+      systemPrompt += `
+
+ACTIVE RECIPE: "${activeRecipe.title}"
+
+RECIPE INGREDIENTS:
+${activeRecipe.ingredients?.join('\n') || 'Not specified'}
+
+RECIPE INSTRUCTIONS:
+${activeRecipe.instructions?.map((inst: string, i: number) => `${i + 1}. ${inst}`).join('\n') || 'Not specified'}
+
+IMPORTANT: When suggesting timer durations, USE THE RECIPE'S TIMING if mentioned in ingredients or instructions. 
+For example:
+- If recipe says "boil pasta for 10 minutes" and you see pasta entering water → timer for 600 seconds
+- If recipe says "sauté onions until golden (about 5 min)" and you see onions hitting pan → timer for 300 seconds
+- If no specific timing in recipe, use common cooking knowledge`;
+    } else {
+      systemPrompt += `
+
+No active recipe. Use common cooking knowledge for timer durations:
+- Pasta: 8-12 minutes depending on type
+- Rice: 15-20 minutes
+- Boiled eggs: soft 6-7 min, hard 10-12 min
+- Sautéed vegetables: 5-8 minutes
+- Pan-seared meat: depends on thickness`;
     }
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -65,12 +97,12 @@ Be concise and cooking-focused. Example outputs:
               },
               {
                 type: 'text',
-                text: 'Describe what you see in this cooking scene briefly.'
+                text: 'Analyze this cooking scene. Return JSON with description and timerSuggestion (if a cooking event that needs timing is detected).'
               }
             ]
           }
         ],
-        max_tokens: 50,
+        max_tokens: 200,
       }),
     });
 
@@ -96,10 +128,26 @@ Be concise and cooking-focused. Example outputs:
     }
 
     const data = await response.json();
-    const description = data.choices?.[0]?.message?.content?.trim() || 'Unable to analyze scene';
+    const content = data.choices?.[0]?.message?.content?.trim() || '';
+    
+    console.log('Vision AI response:', content);
+
+    // Parse JSON response
+    let result = { description: 'Unable to analyze scene', timerSuggestion: null };
+    try {
+      // Try to extract JSON from the response (might be wrapped in markdown code blocks)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        result = JSON.parse(jsonMatch[0]);
+      }
+    } catch (parseError) {
+      console.error('Failed to parse vision response as JSON:', parseError);
+      // Fallback to using raw content as description
+      result.description = content.substring(0, 100);
+    }
 
     return new Response(
-      JSON.stringify({ description }),
+      JSON.stringify(result),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
