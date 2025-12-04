@@ -333,6 +333,9 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     }
   };
 
+  // Track recently created timers to avoid duplicates
+  const recentTimerLabelsRef = useRef<Set<string>>(new Set());
+
   // Vision analysis function - runs every 3 seconds
   const analyzeVision = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current || !isCameraActive) return;
@@ -352,7 +355,11 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
       const { data, error } = await supabase.functions.invoke('analyze-vision', {
         body: {
           imageBase64: base64,
-          activeRecipe: activeRecipeRef.current?.title || null
+          activeRecipe: activeRecipeRef.current ? {
+            title: activeRecipeRef.current.title,
+            ingredients: activeRecipeRef.current.ingredients,
+            instructions: activeRecipeRef.current.instructions
+          } : null
         }
       });
 
@@ -361,11 +368,43 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
         return;
       }
 
+      // Log the description
       if (data?.description) {
         setLogs(prev => [...prev.slice(-19), {
           time: new Date().toLocaleTimeString(),
           text: data.description
         }]);
+      }
+
+      // Handle timer suggestion from vision AI
+      if (data?.timerSuggestion) {
+        const suggestion = data.timerSuggestion;
+        const labelKey = suggestion.label.toLowerCase();
+        
+        // Check if we already have an active timer for this item or recently created one
+        const hasExistingTimer = timersRef.current.some(
+          t => t.label.toLowerCase().includes(labelKey) || labelKey.includes(t.label.toLowerCase())
+        );
+        const recentlyCreated = recentTimerLabelsRef.current.has(labelKey);
+        
+        if (!hasExistingTimer && !recentlyCreated && suggestion.durationSeconds > 0) {
+          console.log('Vision detected cooking event, creating timer:', suggestion);
+          addTimer(suggestion.label, suggestion.durationSeconds);
+          
+          // Track this timer to avoid duplicates for 30 seconds
+          recentTimerLabelsRef.current.add(labelKey);
+          setTimeout(() => {
+            recentTimerLabelsRef.current.delete(labelKey);
+          }, 30000);
+          
+          // Log the timer creation reason
+          if (suggestion.reason) {
+            setLogs(prev => [...prev.slice(-19), {
+              time: new Date().toLocaleTimeString(),
+              text: `⏲️ Timer created: ${suggestion.reason}`
+            }]);
+          }
+        }
       }
     } catch (e) {
       console.error('Vision analysis failed:', e);
