@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, Modality, Type } from '@google/genai';
 import type { FunctionDeclaration, LiveServerMessage } from '@google/genai';
+import { ChefHat, Camera, Mic } from 'lucide-react';
 import { Timer, VisionLog } from '@/types/chef';
 import { base64ToUint8Array, decodeAudioData, createPcmBlob } from '@/services/audioUtils';
 import { Header } from './Header';
@@ -14,7 +15,6 @@ import { ActiveRecipeCard } from './ActiveRecipeCard';
 import { useRecipes, Recipe } from '@/hooks/useRecipes';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { WelcomeOverlay } from './WelcomeOverlay';
 
 // --- Tool Definitions ---
 const createTimerTool: FunctionDeclaration = {
@@ -748,35 +748,48 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 flex flex-col items-center">
-      {/* Welcome overlay - only show when not connected */}
-      {!isConnected && (
-        <WelcomeOverlay
-          onConnect={connectToGemini}
-          isConnecting={isConnecting}
-        />
-      )}
+      <Header />
+      
+      <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-6xl mt-4">
+        {/* Left Column: Recipes - ALWAYS accessible */}
+        <section className="lg:col-span-1 order-3 lg:order-1">
+          <RecipePanel
+            recipes={recipes}
+            activeRecipe={activeRecipe}
+            onSelectRecipe={setActiveRecipe}
+            onDeleteRecipe={deleteRecipe}
+            onAddRecipe={addRecipe}
+            onParseUrl={parseRecipeFromUrl}
+            onParseFile={parseRecipeFromFile}
+            onParseText={parseRecipeFromText}
+            loading={recipesLoading}
+          />
+        </section>
 
-      {/* Main Grid - Hidden when not connected */}
-      <div className={`w-full transition-opacity duration-500 ${!isConnected ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-        <Header />
-        <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-6xl mt-4">
-          {/* Left Column: Recipes */}
-          <section className="lg:col-span-1 order-3 lg:order-1">
-            <RecipePanel
-              recipes={recipes}
-              activeRecipe={activeRecipe}
-              onSelectRecipe={setActiveRecipe}
-              onDeleteRecipe={deleteRecipe}
-              onAddRecipe={addRecipe}
-              onParseUrl={parseRecipeFromUrl}
-              onParseFile={parseRecipeFromFile}
-              onParseText={parseRecipeFromText}
-              loading={recipesLoading}
-            />
-          </section>
-
-          {/* Center Column: Vision & Connection */}
-          <section className="lg:col-span-1 flex flex-col gap-4 order-1 lg:order-2">
+        {/* Center Column: Vision & Connection */}
+        <section className="lg:col-span-1 flex flex-col gap-4 order-1 lg:order-2">
+          {/* Show welcome hero when not connected, camera when connected */}
+          {!isConnected ? (
+            <div className="aspect-video bg-card rounded-2xl border border-border shadow-lg flex flex-col items-center justify-center p-6 text-center">
+              <div className="relative mb-4">
+                <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-pulse" />
+                <div className="relative bg-background p-4 rounded-full border border-primary/20">
+                  <ChefHat className="w-12 h-12 text-primary" />
+                </div>
+              </div>
+              <h2 className="text-xl font-bold text-foreground mb-2">Chef G-Mini</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                {activeRecipe 
+                  ? `Ready to guide you through "${activeRecipe.title}"`
+                  : "Add a recipe or start cooking freestyle"
+                }
+              </p>
+              <div className="flex gap-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1"><Camera className="w-3 h-3" /> Vision</span>
+                <span className="flex items-center gap-1"><Mic className="w-3 h-3" /> Voice</span>
+              </div>
+            </div>
+          ) : (
             <CameraFeed
               ref={videoRef}
               isConnected={isConnected}
@@ -788,58 +801,62 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               onSwitchCamera={switchCamera}
               onToggleWideAngle={toggleWideAngle}
             />
+          )}
 
-            {/* Controls */}
-            <div className="flex flex-col gap-4">
-              <ConnectionButton
-                isConnected={isConnected}
-                isConnecting={isConnecting}
-                onConnect={connectToGemini}
-                onDisconnect={stopSession}
-              />
+          {/* Controls */}
+          <div className="flex flex-col gap-4">
+            <ConnectionButton
+              isConnected={isConnected}
+              isConnecting={isConnecting}
+              onConnect={connectToGemini}
+              onDisconnect={() => stopSession(false)}
+            />
 
-              {error && (
-                <div className="bg-destructive/20 border border-destructive text-destructive-foreground p-3 rounded-lg text-sm text-center">
-                  {error}
-                </div>
-              )}
-
-              {!apiKey && (
-                <div className="bg-warning/20 border border-warning text-warning-foreground p-3 rounded-lg text-sm text-center">
-                  Please configure your Gemini API key to start a session.
-                </div>
-              )}
-            </div>
-
-            <VisionLogs logs={logs} />
-          </section>
-
-
-          <section className="flex flex-col gap-4 order-2 lg:order-3">
-            {activeRecipe && (
-              <ActiveRecipeCard
-                recipe={activeRecipe}
-                currentStep={currentStep}
-                onStepChange={setCurrentStep}
-              />
+            {error && (
+              <div className="bg-destructive/20 border border-destructive text-destructive-foreground p-3 rounded-lg text-sm text-center">
+                {error}
+              </div>
             )}
 
+            {!apiKey && (
+              <div className="bg-warning/20 border border-warning text-warning-foreground p-3 rounded-lg text-sm text-center">
+                Please configure your Gemini API key to start a session.
+              </div>
+            )}
+          </div>
+
+          {/* Vision logs only when connected */}
+          {isConnected && <VisionLogs logs={logs} />}
+        </section>
+
+        {/* Right Column */}
+        <section className="flex flex-col gap-4 order-2 lg:order-3">
+          {activeRecipe && (
+            <ActiveRecipeCard
+              recipe={activeRecipe}
+              currentStep={currentStep}
+              onStepChange={setCurrentStep}
+            />
+          )}
+
+          {/* Only show conversation indicator when connected */}
+          {isConnected && (
             <ConversationIndicator
               state={conversationState}
               isConnected={isConnected}
               volume={volume}
             />
+          )}
 
-            <TimerSection
-              timers={timers}
-              onPause={(id) => toggleTimer(id, true)}
-              onResume={(id) => toggleTimer(id, false)}
-              onDelete={removeTimer}
-              onReset={resetTimer}
-            />
-          </section>
-        </main>
-      </div>
+          <TimerSection
+            timers={timers}
+            onPause={(id) => toggleTimer(id, true)}
+            onResume={(id) => toggleTimer(id, false)}
+            onDelete={removeTimer}
+            onReset={resetTimer}
+          />
+        </section>
+      </main>
     </div>
   );
 };
