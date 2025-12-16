@@ -133,7 +133,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
       }
     };
     enumerateCameras();
-  }, [currentStep]);
+  }, []);
 
   // --- Audio/Video Cleanup ---
   const stopSession = useCallback((keepCamera = false) => {
@@ -747,13 +747,16 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 flex flex-col items-center">
-      <WelcomeOverlay
-        onConnect={connectToGemini}
-        isConnecting={isConnecting}
-      />
+      {/* Welcome overlay - only show when not connected */}
+      {!isConnected && (
+        <WelcomeOverlay
+          onConnect={connectToGemini}
+          isConnecting={isConnecting}
+        />
+      )}
 
-      {/* Main Grid - Hidden when not connected (behind overlay) but kept for structure */}
-      <div className={`transition-opacity duration-1000 ${!isConnected ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+      {/* Main Grid - Hidden when not connected */}
+      <div className={`w-full transition-opacity duration-500 ${!isConnected ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <Header />
         <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-6xl mt-4">
           {/* Left Column: Recipes */}
