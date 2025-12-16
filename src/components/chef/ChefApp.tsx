@@ -197,6 +197,20 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
               title: `Timer Complete!`,
               description: `${timer.label} is done!`,
             });
+
+            // Notify AI about timer completion
+            if (sessionPromiseRef.current) {
+              sessionPromiseRef.current.then(session => {
+                const recipeName = activeRecipeRef.current?.title || '';
+                session.sendRealtimeInput({
+                  text: `[TIMER ALERT] The "${timer.label}" timer just finished!${recipeName ? ` Recipe: ${recipeName}.` : ''} Tell the user immediately what to do next based on the recipe or cooking context. Be concise and actionable.`
+                });
+                console.log(`Timer "${timer.label}" finished - notified AI`);
+              }).catch(err => {
+                console.warn('Could not notify AI about timer completion:', err);
+              });
+            }
+
             return { ...timer, durationRemaining: 0, status: 'finished' };
           }
           return { ...timer, durationRemaining: Math.max(0, nextRemaining) };
@@ -453,6 +467,13 @@ YOUR TOOLS:
 - 'createTimer': Create cooking timers. Use recipe timing when available.
 - 'logObservation': Log what you see in the camera (use periodically for cooking-relevant observations).
 - 'getTimers': Check active timers.
+
+TIMER NOTIFICATIONS:
+When you receive a [TIMER ALERT] message, IMMEDIATELY respond by:
+1. Acknowledge the timer completion verbally (e.g., "Your pasta is ready!")
+2. Give the specific next action based on the recipe or cooking context (e.g., "Drain it now and toss with the sauce")
+3. If there's a recipe active, call getActiveRecipe to reference the next relevant step
+4. Be concise and urgent - this is a time-sensitive moment
 
 VISION LOGGING:
 - Call 'logObservation' every 5-10 seconds when you notice cooking activity
