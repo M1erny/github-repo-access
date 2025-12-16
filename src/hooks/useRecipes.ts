@@ -198,6 +198,32 @@ export const useRecipes = () => {
     }
   };
 
+  const parseRecipeFromText = async (text: string): Promise<Partial<Recipe> | null> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-recipe', {
+        body: { content: text, type: 'text' }
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      return {
+        title: data.recipe.title,
+        content: text,
+        ingredients: data.recipe.ingredients,
+        instructions: data.recipe.instructions,
+      };
+    } catch (err) {
+      console.error('Error parsing recipe from text:', err);
+      toast({
+        title: "Error",
+        description: "Failed to parse recipe from text",
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
   return {
     recipes,
     loading,
@@ -207,6 +233,7 @@ export const useRecipes = () => {
     deleteRecipe,
     parseRecipeFromUrl,
     parseRecipeFromFile,
+    parseRecipeFromText,
     refreshRecipes: fetchRecipes,
   };
 };
