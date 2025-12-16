@@ -14,6 +14,7 @@ import { ActiveRecipeCard } from './ActiveRecipeCard';
 import { useRecipes, Recipe } from '@/hooks/useRecipes';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { WelcomeOverlay } from './WelcomeOverlay';
 
 // --- Tool Definitions ---
 const createTimerTool: FunctionDeclaration = {
@@ -97,6 +98,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -145,7 +147,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     }
 
     sourcesRef.current.forEach(source => {
-      try { source.stop(); } catch(e) {}
+      try { source.stop(); } catch (e) { /* ignore */ }
     });
     sourcesRef.current.clear();
 
@@ -153,7 +155,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
       clearInterval(videoIntervalRef.current);
       videoIntervalRef.current = null;
     }
-    
+
     if (visionIntervalRef.current) {
       clearInterval(visionIntervalRef.current);
       visionIntervalRef.current = null;
@@ -204,7 +206,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   }, []);
 
   // --- Timer Actions ---
-  const addTimer = (label: string, durationSeconds: number) => {
+  const addTimer = (label: string, durationSeconds: number, reason?: string) => {
     const newTimer: Timer = {
       id: Math.random().toString(36).substring(7),
       label,
@@ -214,8 +216,11 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     };
     setTimers(prev => [...prev, newTimer]);
     toast({
-      title: "Timer Created",
-      description: `${label} - ${Math.floor(durationSeconds / 60)}:${(durationSeconds % 60).toString().padStart(2, '0')}`,
+      title: reason ? "👁️ Proactive Timer Started!" : "Timer Created",
+      description: reason
+        ? `${reason} -> Set ${label} for ${Math.floor(durationSeconds / 60)}m`
+        : `${label} - ${Math.floor(durationSeconds / 60)}:${(durationSeconds % 60).toString().padStart(2, '0')}`,
+      variant: reason ? "default" : "default", // You could use a special variant if available
     });
     return newTimer;
   };
@@ -239,15 +244,15 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   // Switch camera function
   const switchCamera = async () => {
     if (cameras.length <= 1) return;
-    
+
     const nextIndex = (currentCameraIndex + 1) % cameras.length;
     setCurrentCameraIndex(nextIndex);
-    
+
     // If camera is active, restart with new device
     if (mediaStreamRef.current && videoRef.current) {
       // Stop current video tracks
       mediaStreamRef.current.getVideoTracks().forEach(track => track.stop());
-      
+
       try {
         const newStream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -257,7 +262,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
             frameRate: { ideal: 15 }
           }
         });
-        
+
         // Replace video track in existing stream
         const newVideoTrack = newStream.getVideoTracks()[0];
         const oldVideoTrack = mediaStreamRef.current.getVideoTracks()[0];
@@ -265,11 +270,11 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
           mediaStreamRef.current.removeTrack(oldVideoTrack);
         }
         mediaStreamRef.current.addTrack(newVideoTrack);
-        
+
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStreamRef.current;
         }
-        
+
         toast({
           title: "Camera Switched",
           description: cameras[nextIndex].label || `Camera ${nextIndex + 1}`,
@@ -289,11 +294,11 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const toggleWideAngle = async () => {
     const newWideAngle = !useWideAngle;
     setUseWideAngle(newWideAngle);
-    
+
     if (mediaStreamRef.current && videoRef.current) {
       // Stop current video tracks
       mediaStreamRef.current.getVideoTracks().forEach(track => track.stop());
-      
+
       try {
         const deviceId = cameras[currentCameraIndex]?.deviceId;
         const newStream = await navigator.mediaDevices.getUserMedia({
@@ -303,25 +308,25 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
             height: { ideal: newWideAngle ? 720 : 480 },
             frameRate: { ideal: 15 },
             // Request wider field of view if available
-            ...(newWideAngle ? { 
-              aspectRatio: { ideal: 16/9 },
+            ...(newWideAngle ? {
+              aspectRatio: { ideal: 16 / 9 },
               // Some devices support zoom - set to minimum for widest view
               zoom: { ideal: 1 }
             } : {})
           }
         });
-        
+
         const newVideoTrack = newStream.getVideoTracks()[0];
         const oldVideoTrack = mediaStreamRef.current.getVideoTracks()[0];
         if (oldVideoTrack) {
           mediaStreamRef.current.removeTrack(oldVideoTrack);
         }
         mediaStreamRef.current.addTrack(newVideoTrack);
-        
+
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStreamRef.current;
         }
-        
+
         toast({
           title: newWideAngle ? "Wide Angle Enabled" : "Standard View",
           description: newWideAngle ? "Using wider field of view" : "Using standard camera view",
@@ -380,23 +385,24 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
       if (data?.timerSuggestion) {
         const suggestion = data.timerSuggestion;
         const labelKey = suggestion.label.toLowerCase();
-        
+
         // Check if we already have an active timer for this item or recently created one
         const hasExistingTimer = timersRef.current.some(
           t => t.label.toLowerCase().includes(labelKey) || labelKey.includes(t.label.toLowerCase())
         );
         const recentlyCreated = recentTimerLabelsRef.current.has(labelKey);
-        
+
         if (!hasExistingTimer && !recentlyCreated && suggestion.durationSeconds > 0) {
           console.log('Vision detected cooking event, creating timer:', suggestion);
-          addTimer(suggestion.label, suggestion.durationSeconds);
-          
+
+          addTimer(suggestion.label, suggestion.durationSeconds, suggestion.reason);
+
           // Track this timer to avoid duplicates for 30 seconds
           recentTimerLabelsRef.current.add(labelKey);
           setTimeout(() => {
             recentTimerLabelsRef.current.delete(labelKey);
           }, 30000);
-          
+
           // Log the timer creation reason
           if (suggestion.reason) {
             setLogs(prev => [...prev.slice(-19), {
@@ -489,10 +495,10 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
     setIsConnecting(true);
     setError(null);
     setLogs([]);
-    
+
     try {
       // Initialize Audio Contexts
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const inputCtx = new AudioContextClass({ sampleRate: 16000 });
       const outputCtx = new AudioContextClass({ sampleRate: 24000 });
 
@@ -509,7 +515,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
           width: { ideal: useWideAngle ? 1280 : 640 },
           height: { ideal: useWideAngle ? 720 : 480 },
           frameRate: { ideal: 15 },
-          ...(useWideAngle ? { aspectRatio: { ideal: 16/9 }, zoom: { ideal: 1 } } : {})
+          ...(useWideAngle ? { aspectRatio: { ideal: 16 / 9 }, zoom: { ideal: 1 } } : {})
         }
       });
       mediaStreamRef.current = stream;
@@ -583,7 +589,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
           },
           onmessage: async (msg: LiveServerMessage) => {
             console.log("Gemini message:", msg);
-            
+
             // Handle turn completion - user can speak again
             if (msg.serverContent?.turnComplete) {
               console.log("Turn complete - listening for user");
@@ -591,7 +597,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               setIsProcessing(false);
               setIsListening(true);
             }
-            
+
             // Handle interruption
             if (msg.serverContent?.interrupted) {
               console.log("AI was interrupted");
@@ -600,7 +606,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               setIsListening(true);
               // Clear any pending audio
               sourcesRef.current.forEach(source => {
-                try { source.stop(); } catch(e) {}
+                try { source.stop(); } catch (e) { /* ignore */ }
               });
               sourcesRef.current.clear();
               nextStartTimeRef.current = audioContextRef.current?.currentTime || 0;
@@ -640,16 +646,16 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               setIsListening(false);
               const responses = [];
               for (const fc of msg.toolCall.functionCalls) {
-                let result: any = { result: "ok" };
+                let result: Record<string, unknown> = { result: "ok" };
 
                 if (fc.name === 'createTimer') {
-                  const { label, durationSeconds } = fc.args as any;
+                  const { label, durationSeconds } = fc.args as { label: string; durationSeconds: number };
                   addTimer(label, durationSeconds);
                   result = { result: `Timer '${label}' set for ${durationSeconds}s` };
                 } else if (fc.name === 'getTimers') {
                   result = { timers: timersRef.current };
                 } else if (fc.name === 'logObservation') {
-                  const { text } = fc.args as any;
+                  const { text } = fc.args as { text: string };
                   setLogs(prev => [...prev.slice(-19), { time: new Date().toLocaleTimeString(), text }]);
                   result = { result: "logged" };
                 } else if (fc.name === 'getActiveRecipe') {
@@ -730,9 +736,10 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
         });
       }, 1000);
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      setError(e.message || "Failed to connect");
+      const errorMessage = e instanceof Error ? e.message : "Failed to connect";
+      setError(errorMessage);
       setIsConnecting(false);
       stopSession();
     }
@@ -740,88 +747,94 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 flex flex-col items-center">
-      <Header />
+      <WelcomeOverlay
+        onConnect={connectToGemini}
+        isConnecting={isConnecting}
+      />
 
-      {/* Main Grid - 3 columns on larger screens */}
-      <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-6xl">
-        {/* Left Column: Recipes */}
-        <section className="lg:col-span-1 order-3 lg:order-1">
-          <RecipePanel
-            recipes={recipes}
-            activeRecipe={activeRecipe}
-            onSelectRecipe={setActiveRecipe}
-            onDeleteRecipe={deleteRecipe}
-            onAddRecipe={addRecipe}
-            onParseUrl={parseRecipeFromUrl}
-            onParseFile={parseRecipeFromFile}
-            loading={recipesLoading}
-          />
-        </section>
+      {/* Main Grid - Hidden when not connected (behind overlay) but kept for structure */}
+      <div className={`transition-opacity duration-1000 ${!isConnected ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+        <Header />
+        <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-6xl mt-4">
+          {/* Left Column: Recipes */}
+          <section className="lg:col-span-1 order-3 lg:order-1">
+            <RecipePanel
+              recipes={recipes}
+              activeRecipe={activeRecipe}
+              onSelectRecipe={setActiveRecipe}
+              onDeleteRecipe={deleteRecipe}
+              onAddRecipe={addRecipe}
+              onParseUrl={parseRecipeFromUrl}
+              onParseFile={parseRecipeFromFile}
+              loading={recipesLoading}
+            />
+          </section>
 
-        {/* Center Column: Vision & Connection */}
-        <section className="lg:col-span-1 flex flex-col gap-4 order-1 lg:order-2">
-          <CameraFeed
-            ref={videoRef}
-            isConnected={isConnected}
-            isCameraActive={isCameraActive}
-            canvasRef={canvasRef}
-            cameras={cameras}
-            currentCameraIndex={currentCameraIndex}
-            useWideAngle={useWideAngle}
-            onSwitchCamera={switchCamera}
-            onToggleWideAngle={toggleWideAngle}
-          />
-
-          {/* Controls */}
-          <div className="flex flex-col gap-4">
-            <ConnectionButton
+          {/* Center Column: Vision & Connection */}
+          <section className="lg:col-span-1 flex flex-col gap-4 order-1 lg:order-2">
+            <CameraFeed
+              ref={videoRef}
               isConnected={isConnected}
-              isConnecting={isConnecting}
-              onConnect={connectToGemini}
-              onDisconnect={stopSession}
+              isCameraActive={isCameraActive}
+              canvasRef={canvasRef}
+              cameras={cameras}
+              currentCameraIndex={currentCameraIndex}
+              useWideAngle={useWideAngle}
+              onSwitchCamera={switchCamera}
+              onToggleWideAngle={toggleWideAngle}
             />
 
-            {error && (
-              <div className="bg-destructive/20 border border-destructive text-destructive-foreground p-3 rounded-lg text-sm text-center">
-                {error}
-              </div>
+            {/* Controls */}
+            <div className="flex flex-col gap-4">
+              <ConnectionButton
+                isConnected={isConnected}
+                isConnecting={isConnecting}
+                onConnect={connectToGemini}
+                onDisconnect={stopSession}
+              />
+
+              {error && (
+                <div className="bg-destructive/20 border border-destructive text-destructive-foreground p-3 rounded-lg text-sm text-center">
+                  {error}
+                </div>
+              )}
+
+              {!apiKey && (
+                <div className="bg-warning/20 border border-warning text-warning-foreground p-3 rounded-lg text-sm text-center">
+                  Please configure your Gemini API key to start a session.
+                </div>
+              )}
+            </div>
+
+            <VisionLogs logs={logs} />
+          </section>
+
+
+          <section className="flex flex-col gap-4 order-2 lg:order-3">
+            {activeRecipe && (
+              <ActiveRecipeCard
+                recipe={activeRecipe}
+                currentStep={currentStep}
+                onStepChange={setCurrentStep}
+              />
             )}
 
-            {!apiKey && (
-              <div className="bg-warning/20 border border-warning text-warning-foreground p-3 rounded-lg text-sm text-center">
-                Please configure your Gemini API key to start a session.
-              </div>
-            )}
-          </div>
-
-          <VisionLogs logs={logs} />
-        </section>
-
-        {/* Right Column: Active Recipe, Timers & Audio */}
-        <section className="flex flex-col gap-4 order-2 lg:order-3">
-          {activeRecipe && (
-            <ActiveRecipeCard 
-              recipe={activeRecipe} 
-              currentStep={currentStep}
-              onStepChange={setCurrentStep}
+            <ConversationIndicator
+              state={conversationState}
+              isConnected={isConnected}
+              volume={volume}
             />
-          )}
-          
-          <ConversationIndicator 
-            state={conversationState} 
-            isConnected={isConnected} 
-            volume={volume} 
-          />
-          
-          <TimerSection
-            timers={timers}
-            onPause={(id) => toggleTimer(id, true)}
-            onResume={(id) => toggleTimer(id, false)}
-            onDelete={removeTimer}
-            onReset={resetTimer}
-          />
-        </section>
-      </main>
+
+            <TimerSection
+              timers={timers}
+              onPause={(id) => toggleTimer(id, true)}
+              onResume={(id) => toggleTimer(id, false)}
+              onDelete={removeTimer}
+              onReset={resetTimer}
+            />
+          </section>
+        </main>
+      </div>
     </div>
   );
 };

@@ -10,7 +10,7 @@ interface RecipePanelProps {
   activeRecipe: Recipe | null;
   onSelectRecipe: (recipe: Recipe | null) => void;
   onDeleteRecipe: (id: string) => void;
-  onAddRecipe: (recipe: Omit<Recipe, 'id' | 'created_at' | 'updated_at'>) => Promise<any>;
+  onAddRecipe: (recipe: Omit<Recipe, 'id' | 'created_at' | 'updated_at'>) => Promise<unknown>;
   onParseUrl: (url: string) => Promise<Partial<Recipe> | null>;
   onParseFile: (file: File) => Promise<Partial<Recipe> | null>;
   loading: boolean;
@@ -87,11 +87,10 @@ export const RecipePanel: React.FC<RecipePanelProps> = ({
             {recipes.map((recipe) => (
               <div
                 key={recipe.id}
-                className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                  activeRecipe?.id === recipe.id
+                className={`p-3 rounded-lg border cursor-pointer transition-colors ${activeRecipe?.id === recipe.id
                     ? 'bg-primary/10 border-primary/30'
                     : 'bg-muted/50 border-transparent hover:border-border hover:bg-muted'
-                }`}
+                  }`}
                 onClick={() => onSelectRecipe(recipe)}
               >
                 <div className="flex items-start justify-between gap-2">

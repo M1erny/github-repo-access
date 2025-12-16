@@ -1,0 +1,53 @@
+﻿
+> vite_react_shadcn_ts@0.0.0 lint
+> eslint .
+
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\chef\AddRecipeDialog.tsx
+  18:86  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\chef\ChefApp.tsx
+  101:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  149:40  error  Empty block statement                     no-empty
+  500:67  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  608:50  error  Empty block statement                     no-empty
+  648:29  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  651:65  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  657:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  738:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\chef\RecipePanel.tsx
+  13:86  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\badge.tsx
+  29:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\button.tsx
+  47:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\command.tsx
+  24:11  error  An interface declaring no members is equivalent to its supertype  @typescript-eslint/no-empty-object-type
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\form.tsx
+  129:10  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\navigation-menu.tsx
+  111:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\sidebar.tsx
+  636:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\sonner.tsx
+  27:19  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\textarea.tsx
+  5:18  error  An interface declaring no members is equivalent to its supertype  @typescript-eslint/no-empty-object-type
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\toggle.tsx
+  37:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Tomek\.antigravity\github-repo-access\tailwind.config.ts
+  115:13  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+Ôťľ 20 problems (13 errors, 7 warnings)
+

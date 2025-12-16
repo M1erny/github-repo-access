@@ -12,7 +12,7 @@ serve(async (req) => {
 
   try {
     const { imageBase64, activeRecipe } = await req.json();
-    
+
     if (!imageBase64) {
       return new Response(
         JSON.stringify({ error: 'No image provided' }),
@@ -37,15 +37,15 @@ Your response MUST be valid JSON with this structure:
   "timerSuggestion": null or { "label": "item name", "durationSeconds": number, "reason": "why" }
 }
 
-TIMER DETECTION - Create a timer suggestion when you see:
-- Food being added to boiling water (pasta, noodles, vegetables, eggs)
-- Meat/protein placed on a hot pan or grill
-- Items placed in an oven
-- Food starting to cook that needs timing (sautéing onions, toasting bread, etc.)
+TIMER DETECTION - PROACTIVE MODE:
+If you see ANY cooking event, you MUST suggest a timer. Do not be shy.
+- Food being added to water/pan/oven -> START TIMER
+- Food changing color/texture -> START TIMER
+- "Checking" food -> START TIMER (if not timed yet)
 
-DO NOT suggest a timer for:
-- Prep work (cutting, measuring, mixing)
-- Food already cooking (if you've seen it before)
+REQUIRED: "reason": "Short, punchy explanation for the user, e.g. 'Saw pasta hit water' or 'Meat is searing'"
+
+DO NOT suggest if:
 - Empty pans heating up`;
 
     // Add recipe context for accurate timing
@@ -129,7 +129,7 @@ No active recipe. Use common cooking knowledge for timer durations:
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content?.trim() || '';
-    
+
     console.log('Vision AI response:', content);
 
     // Parse JSON response
