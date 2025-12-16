@@ -8,8 +8,9 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Link, Upload, Loader2, Check, FileImage } from 'lucide-react';
+import { Link, Upload, Loader2, Check, FileImage, FileText } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 interface AddRecipeDialogProps {
@@ -18,6 +19,7 @@ interface AddRecipeDialogProps {
   onAddRecipe: (recipe: Omit<Recipe, 'id' | 'created_at' | 'updated_at'>) => Promise<unknown>;
   onParseUrl: (url: string) => Promise<Partial<Recipe> | null>;
   onParseFile: (file: File) => Promise<Partial<Recipe> | null>;
+  onParseText: (text: string) => Promise<Partial<Recipe> | null>;
 }
 
 export const AddRecipeDialog: React.FC<AddRecipeDialogProps> = ({
@@ -26,8 +28,10 @@ export const AddRecipeDialog: React.FC<AddRecipeDialogProps> = ({
   onAddRecipe,
   onParseUrl,
   onParseFile,
+  onParseText,
 }) => {
   const [url, setUrl] = useState('');
+  const [recipeText, setRecipeText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [parsedRecipe, setParsedRecipe] = useState<Partial<Recipe> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +50,30 @@ export const AddRecipeDialog: React.FC<AddRecipeDialogProps> = ({
     setParsedRecipe(null);
 
     const recipe = await onParseUrl(url);
+    if (recipe) {
+      setParsedRecipe(recipe);
+      toast({
+        title: "Recipe Found",
+        description: `Found: "${recipe.title}"`,
+      });
+    }
+    setIsLoading(false);
+  };
+
+  const handleParseText = async () => {
+    if (!recipeText.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter recipe text",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    setParsedRecipe(null);
+
+    const recipe = await onParseText(recipeText);
     if (recipe) {
       setParsedRecipe(recipe);
       toast({
@@ -97,6 +125,7 @@ export const AddRecipeDialog: React.FC<AddRecipeDialogProps> = ({
     if (result) {
       onOpenChange(false);
       setUrl('');
+      setRecipeText('');
       setParsedRecipe(null);
     }
     setIsLoading(false);
@@ -105,6 +134,7 @@ export const AddRecipeDialog: React.FC<AddRecipeDialogProps> = ({
   const handleClose = () => {
     onOpenChange(false);
     setUrl('');
+    setRecipeText('');
     setParsedRecipe(null);
     setIsLoading(false);
   };
@@ -116,17 +146,55 @@ export const AddRecipeDialog: React.FC<AddRecipeDialogProps> = ({
           <DialogTitle>Add Recipe</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="url" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="text" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="text" className="gap-2">
+              <FileText className="w-4 h-4" />
+              Text
+            </TabsTrigger>
             <TabsTrigger value="url" className="gap-2">
               <Link className="w-4 h-4" />
-              From URL
+              URL
             </TabsTrigger>
             <TabsTrigger value="file" className="gap-2">
               <FileImage className="w-4 h-4" />
-              Upload File
+              File
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="text" className="space-y-4 mt-4">
+            <Textarea
+              placeholder="Paste or type your recipe here...
+
+Example:
+Spaghetti Carbonara
+
+Ingredients:
+- 400g spaghetti
+- 200g pancetta
+- 4 egg yolks
+- 100g parmesan
+
+Instructions:
+1. Cook pasta in salted water
+2. Fry pancetta until crispy
+3. Mix eggs with cheese
+4. Combine all together"
+              value={recipeText}
+              onChange={(e) => setRecipeText(e.target.value)}
+              disabled={isLoading}
+              className="min-h-[200px] text-sm"
+            />
+            <Button onClick={handleParseText} disabled={isLoading || !recipeText.trim()} className="w-full">
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : null}
+              Parse Recipe
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Paste any recipe text and Chef G-Mini will extract the ingredients and steps.
+            </p>
+          </TabsContent>
 
           <TabsContent value="url" className="space-y-4 mt-4">
             <div className="flex gap-2">

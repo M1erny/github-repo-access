@@ -13,6 +13,7 @@ interface RecipePanelProps {
   onAddRecipe: (recipe: Omit<Recipe, 'id' | 'created_at' | 'updated_at'>) => Promise<unknown>;
   onParseUrl: (url: string) => Promise<Partial<Recipe> | null>;
   onParseFile: (file: File) => Promise<Partial<Recipe> | null>;
+  onParseText: (text: string) => Promise<Partial<Recipe> | null>;
   loading: boolean;
 }
 
@@ -24,6 +25,7 @@ export const RecipePanel: React.FC<RecipePanelProps> = ({
   onAddRecipe,
   onParseUrl,
   onParseFile,
+  onParseText,
   loading,
 }) => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -128,6 +130,7 @@ export const RecipePanel: React.FC<RecipePanelProps> = ({
         onAddRecipe={onAddRecipe}
         onParseUrl={onParseUrl}
         onParseFile={onParseFile}
+        onParseText={onParseText}
       />
     </div>
   );

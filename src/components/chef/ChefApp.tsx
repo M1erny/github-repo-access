@@ -88,6 +88,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     deleteRecipe,
     parseRecipeFromUrl,
     parseRecipeFromFile,
+    parseRecipeFromText,
   } = useRecipes();
 
   // Refs
@@ -769,6 +770,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               onAddRecipe={addRecipe}
               onParseUrl={parseRecipeFromUrl}
               onParseFile={parseRecipeFromFile}
+              onParseText={parseRecipeFromText}
               loading={recipesLoading}
             />
           </section>
