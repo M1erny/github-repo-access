@@ -1,0 +1,16 @@
+﻿
+> vite_react_shadcn_ts@0.0.0 lint
+> eslint .
+
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\navigation-menu.tsx
+  110:1  warning  Unused eslint-disable directive (no problems were reported from 'react-refresh/only-export-components')
+  112:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Tomek\.antigravity\github-repo-access\src\components\ui\sidebar.tsx
+  612:1  warning  Unused eslint-disable directive (no problems were reported from 'react-refresh/only-export-components')
+  637:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+Ôťľ 4 problems (0 errors, 4 warnings)
+  0 errors and 2 warnings potentially fixable with the `--fix` option.
+
