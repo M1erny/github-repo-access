@@ -23,7 +23,8 @@ serve(async (req) => {
     }
 
     const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
-    const newSessionExpireTime = new Date(Date.now() + 60 * 1000).toISOString(); // 1 min
+    // Allow creating new Live sessions for the full token lifetime (otherwise default is ~1 minute).
+    const newSessionExpireTime = expireTime;
 
     // Create an ephemeral token so the browser never sees the long-lived key.
     const client = new GoogleGenAI({
@@ -33,7 +34,7 @@ serve(async (req) => {
 
     const token = await client.authTokens.create({
       config: {
-        uses: 1,
+        uses: 10,
         expireTime,
         newSessionExpireTime,
         // Lock token to our Live connection config (more secure).

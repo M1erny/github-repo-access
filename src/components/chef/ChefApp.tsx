@@ -729,10 +729,14 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
             const reason = (event as CloseEvent | undefined)?.reason;
             console.log("Gemini Live Session Closed", { code, reason, event });
 
+            setError(
+              `AI session closed${code ? ` (code ${code})` : ''}${reason ? `: ${reason}` : ''}`
+            );
+
             toast({
               title: "AI Disconnected",
-              description: reason
-                ? `${reason}${code ? ` (code ${code})` : ''}`
+              description: code || reason
+                ? `Session closed${code ? ` (code ${code})` : ''}${reason ? `: ${reason}` : ''}`
                 : "The AI session has ended. You can reconnect anytime.",
               variant: "destructive",
             });
@@ -749,6 +753,19 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
             stopSession(true); // Keep camera on
           }
         }
+      });
+
+      // Surface promise rejections (some failures won't trigger callbacks)
+      sessionPromise.catch((err: any) => {
+        console.error("Gemini Live connect failed", err);
+        const msg = err?.message || String(err);
+        setError(`Connection failed: ${msg}`);
+        toast({
+          title: "Connection Failed",
+          description: msg,
+          variant: "destructive",
+        });
+        stopSession(true);
       });
 
       sessionPromiseRef.current = sessionPromise;
