@@ -24,6 +24,7 @@ export interface DiagnosticInfo {
   messagesReceived: number;
   lastActivity: ModelActivity | null;
   activityLog: ModelActivity[];
+  aiMode?: 'audio-only' | 'multimodal';
 }
 
 interface DiagnosticPanelProps {
@@ -116,6 +117,21 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ info, isOpen, 
                 {info.connectionStatus}
               </span>
             </div>
+
+            {/* AI Mode */}
+            {info.aiMode && (
+              <div className="flex justify-between items-center">
+                <span className="text-white/50">Mode</span>
+                <span className={cn(
+                  "px-2 py-0.5 rounded text-[10px] font-semibold uppercase",
+                  info.aiMode === 'multimodal' 
+                    ? "bg-blue-500/20 text-blue-300" 
+                    : "bg-orange-500/20 text-orange-300"
+                )}>
+                  {info.aiMode === 'multimodal' ? '📷 Camera + Voice' : '🎤 Voice Only'}
+                </span>
+              </div>
+            )}
 
             {/* Model */}
             <div className="flex justify-between items-center">

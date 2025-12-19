@@ -18,8 +18,11 @@ import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
 // Constants for model configuration
-const GEMINI_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+const AUDIO_ONLY_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+const MULTIMODAL_MODEL = 'gemini-2.0-flash-live-001';
 const API_VERSION = 'v1alpha';
+
+type AIMode = 'audio-only' | 'multimodal';
 
 // --- Tool Definitions ---
 const createTimerTool: FunctionDeclaration = {
@@ -80,9 +83,13 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
   const [useWideAngle, setUseWideAngle] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [aiMode, setAIMode] = useState<AIMode>('multimodal'); // Default to multimodal for camera support
+  
+  const currentModel = aiMode === 'audio-only' ? AUDIO_ONLY_MODEL : MULTIMODAL_MODEL;
+  
   const [diagnosticInfo, setDiagnosticInfo] = useState<DiagnosticInfo>({
     connectionStatus: 'disconnected',
-    modelName: GEMINI_MODEL,
+    modelName: currentModel,
     apiVersion: API_VERSION,
     tokenUsage: { inputTokens: 0, outputTokens: 0 },
     sessionStartTime: null,
@@ -93,7 +100,17 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     messagesReceived: 0,
     lastActivity: null,
     activityLog: [],
+    aiMode: aiMode,
   });
+  
+  // Update diagnostics when mode changes
+  useEffect(() => {
+    setDiagnosticInfo(prev => ({
+      ...prev,
+      modelName: currentModel,
+      aiMode: aiMode,
+    }));
+  }, [aiMode, currentModel]);
   
   // Helper to log model activity
   const logActivity = (type: ModelActivity['type'], message: string) => {
@@ -596,40 +613,49 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
       audioContextRef.current = outputCtx;
       nextStartTimeRef.current = outputCtx.currentTime;
 
-      // Request Media Stream (Audio + Video)
+      // Request Media Stream - only request video in multimodal mode
       const deviceId = cameras[currentCameraIndex]?.deviceId;
 
       let stream: MediaStream;
-      try {
-        console.log('Requesting media with video...');
-        console.log('Device ID:', deviceId || 'default');
-        console.log('Wide angle:', useWideAngle);
-        
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: {
-            ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-            width: { ideal: useWideAngle ? 1280 : 640 },
-            height: { ideal: useWideAngle ? 720 : 480 },
-            frameRate: { ideal: 15 },
-            ...(useWideAngle ? { aspectRatio: { ideal: 16 / 9 } } : {}),
-          },
-        });
-        
-        console.log('Media stream obtained:', {
-          videoTracks: stream.getVideoTracks().length,
-          audioTracks: stream.getAudioTracks().length,
-          videoTrackLabel: stream.getVideoTracks()[0]?.label || 'none',
-        });
-      } catch (err) {
-        console.error("Video capture failed:", err);
-        logActivity('connection', `Video failed: ${err instanceof Error ? err.message : 'Unknown error'} - using audio only`);
-        toast({
-          title: "Camera Unavailable",
-          description: "Using audio-only mode. Check camera permissions.",
-          variant: "destructive",
-        });
+      
+      if (aiMode === 'audio-only') {
+        // Audio-only mode - skip camera entirely
+        console.log('Audio-only mode - skipping video request');
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        logActivity('connection', 'Audio-only mode - best voice quality');
+      } else {
+        // Multimodal mode - request camera + audio
+        try {
+          console.log('Multimodal mode - requesting video...');
+          console.log('Device ID:', deviceId || 'default');
+          console.log('Wide angle:', useWideAngle);
+          
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: {
+              ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+              width: { ideal: useWideAngle ? 1280 : 640 },
+              height: { ideal: useWideAngle ? 720 : 480 },
+              frameRate: { ideal: 15 },
+              ...(useWideAngle ? { aspectRatio: { ideal: 16 / 9 } } : {}),
+            },
+          });
+          
+          console.log('Media stream obtained:', {
+            videoTracks: stream.getVideoTracks().length,
+            audioTracks: stream.getAudioTracks().length,
+            videoTrackLabel: stream.getVideoTracks()[0]?.label || 'none',
+          });
+        } catch (err) {
+          console.error("Video capture failed:", err);
+          logActivity('connection', `Video failed: ${err instanceof Error ? err.message : 'Unknown error'} - using audio only`);
+          toast({
+            title: "Camera Unavailable",
+            description: "Using audio-only mode. Check camera permissions.",
+            variant: "destructive",
+          });
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
       }
 
       mediaStreamRef.current = stream;
@@ -704,18 +730,22 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
       // NOTE: `apiKey` is an ephemeral token generated by our backend.
       const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1alpha' } });
 
+      console.log('Connecting to Gemini with model:', currentModel, 'mode:', aiMode);
+
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: currentModel,
         config: {
           responseModalities: [Modality.AUDIO],
-          thinkingConfig: {
-            thinkingBudget: 1024,
-            includeThoughts: true
-          },
-          enableAffectiveDialog: true,
-          proactivity: {
-            proactiveAudio: true
-          },
+          ...(aiMode === 'audio-only' ? {
+            thinkingConfig: {
+              thinkingBudget: 1024,
+              includeThoughts: true
+            },
+            enableAffectiveDialog: true,
+            proactivity: {
+              proactiveAudio: true
+            },
+          } : {}),
           outputAudioTranscription: {},
           inputAudioTranscription: {},
           systemInstruction: buildSystemInstruction(),
@@ -728,7 +758,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
             setIsConnected(true);
             setIsConnecting(false);
             setIsListening(true); // Start in listening mode
-            console.log("Gemini Live Session Opened with model:", GEMINI_MODEL);
+            console.log("Gemini Live Session Opened with model:", currentModel);
             
             // Update diagnostics and log connection
             setDiagnosticInfo(prev => ({
@@ -738,8 +768,9 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               messagesSent: 0,
               messagesReceived: 0,
               activityLog: [],
+              modelName: currentModel,
             }));
-            logActivity('connection', `Connected to ${GEMINI_MODEL}`);
+            logActivity('connection', `Connected to ${currentModel} (${aiMode} mode)`);
             
             toast({
               title: "Connected",
@@ -1021,11 +1052,17 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
                 }
               </p>
               <div className="flex gap-2 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><Camera className="w-3 h-3" /> Vision</span>
-                <span className="flex items-center gap-1"><Mic className="w-3 h-3" /> Voice</span>
+                {aiMode === 'multimodal' ? (
+                  <>
+                    <span className="flex items-center gap-1"><Camera className="w-3 h-3" /> Vision</span>
+                    <span className="flex items-center gap-1"><Mic className="w-3 h-3" /> Voice</span>
+                  </>
+                ) : (
+                  <span className="flex items-center gap-1 text-primary"><Mic className="w-3 h-3" /> Voice Only (Best Quality)</span>
+                )}
               </div>
             </div>
-          ) : (
+          ) : aiMode === 'multimodal' ? (
             <CameraFeed
               ref={videoRef}
               isConnected={isConnected}
@@ -1037,10 +1074,82 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               onSwitchCamera={switchCamera}
               onToggleWideAngle={toggleWideAngle}
             />
+          ) : (
+            // Audio-only mode display
+            <div className="aspect-video bg-card rounded-2xl border border-border shadow-lg flex flex-col items-center justify-center p-6 relative overflow-hidden">
+              {/* Animated background */}
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
+              
+              {/* Audio visualization rings */}
+              <div className="relative">
+                <div className={`absolute inset-0 bg-primary/20 rounded-full blur-xl transition-transform duration-200 ${isSpeaking ? 'scale-150' : 'scale-100'}`} 
+                     style={{ transform: `scale(${1 + volume * 0.5})` }} />
+                <div className={`absolute inset-0 bg-primary/10 rounded-full blur-2xl transition-transform duration-300 ${isSpeaking ? 'scale-200' : 'scale-125'}`}
+                     style={{ transform: `scale(${1.25 + volume * 0.75})` }} />
+                <div className="relative bg-background p-6 rounded-full border border-primary/30 shadow-lg">
+                  <Mic className={`w-12 h-12 transition-colors ${isSpeaking ? 'text-primary animate-pulse' : isListening ? 'text-success' : 'text-muted-foreground'}`} />
+                </div>
+              </div>
+              
+              {/* Status text */}
+              <div className="mt-4 text-center relative z-10">
+                <p className="text-sm font-medium text-foreground">
+                  {isSpeaking ? 'Chef G-Mini is speaking...' : isListening ? 'Listening...' : 'Ready'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Voice-only mode • Best audio quality
+                </p>
+              </div>
+              
+              {/* Hidden elements still needed */}
+              <video ref={videoRef} className="hidden" autoPlay muted playsInline />
+              <canvas ref={canvasRef} className="hidden" />
+            </div>
           )}
 
-          {/* Controls */}
+          {/* Mode Toggle & Controls */}
           <div className="flex flex-col gap-4">
+            {/* AI Mode Toggle - only show when not connected */}
+            {!isConnected && (
+              <div className="bg-card rounded-xl border border-border p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-foreground">AI Mode</span>
+                  <span className="text-xs text-muted-foreground">
+                    {aiMode === 'multimodal' ? 'Camera + Voice' : 'Voice Only'}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setAIMode('multimodal')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      aiMode === 'multimodal'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    <Camera className="w-4 h-4" />
+                    With Camera
+                  </button>
+                  <button
+                    onClick={() => setAIMode('audio-only')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      aiMode === 'audio-only'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    <Mic className="w-4 h-4" />
+                    Voice Only
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  {aiMode === 'multimodal' 
+                    ? 'AI can see your cooking via camera' 
+                    : 'Best audio quality, no camera'}
+                </p>
+              </div>
+            )}
+
             <ConnectionButton
               isConnected={isConnected}
               isConnecting={isConnecting}
