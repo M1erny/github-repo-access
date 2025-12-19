@@ -603,9 +603,19 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
       const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1alpha' } });
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
           responseModalities: [Modality.AUDIO],
+          thinkingConfig: {
+            thinkingBudget: 1024,
+            includeThoughts: true
+          },
+          enableAffectiveDialog: true,
+          proactivity: {
+            proactiveAudio: true
+          },
+          outputAudioTranscription: {},
+          inputAudioTranscription: {},
           systemInstruction: buildSystemInstruction(),
           tools: [
             { functionDeclarations: [createTimerTool, getTimersTool, logObservationTool, getActiveRecipeTool] }
@@ -647,6 +657,27 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               });
               sourcesRef.current.clear();
               nextStartTimeRef.current = audioContextRef.current?.currentTime || 0;
+            }
+
+            // Handle Transcriptions
+            if (msg.serverContent?.inputTranscription) {
+              const text = msg.serverContent.inputTranscription.text;
+              if (text) {
+                setLogs((prev) => [...prev.slice(-19), {
+                  time: new Date().toLocaleTimeString(),
+                  text: `🎤 You: ${text}`
+                }]);
+              }
+            }
+
+            if (msg.serverContent?.outputTranscription) {
+              const text = msg.serverContent.outputTranscription.text;
+              if (text) {
+                setLogs((prev) => [...prev.slice(-19), {
+                  time: new Date().toLocaleTimeString(),
+                  text: `🤖 Chef: ${text}`
+                }]);
+              }
             }
 
             // Handle Audio Output
