@@ -103,8 +103,14 @@ export const CameraFeed = forwardRef<HTMLVideoElement, CameraFeedProps>(
         <canvas ref={canvasRef} className="hidden" />
 
         {!isCameraActive && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-muted-foreground text-sm">Camera inactive</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-muted/50">
+            <div className="w-12 h-12 rounded-full bg-destructive/20 flex items-center justify-center">
+              <SwitchCamera className="w-6 h-6 text-destructive" />
+            </div>
+            <p className="text-muted-foreground text-sm font-medium">Camera inactive</p>
+            <p className="text-muted-foreground/70 text-xs text-center px-4">
+              {isConnected ? "No video - audio only mode" : "Start cooking session to enable camera"}
+            </p>
           </div>
         )}
       </div>

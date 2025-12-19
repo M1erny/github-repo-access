@@ -601,6 +601,10 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
 
       let stream: MediaStream;
       try {
+        console.log('Requesting media with video...');
+        console.log('Device ID:', deviceId || 'default');
+        console.log('Wide angle:', useWideAngle);
+        
         stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: {
@@ -608,11 +612,23 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
             width: { ideal: useWideAngle ? 1280 : 640 },
             height: { ideal: useWideAngle ? 720 : 480 },
             frameRate: { ideal: 15 },
-            ...(useWideAngle ? { aspectRatio: { ideal: 16 / 9 }, zoom: { ideal: 1 } } : {}),
+            ...(useWideAngle ? { aspectRatio: { ideal: 16 / 9 } } : {}),
           },
         });
+        
+        console.log('Media stream obtained:', {
+          videoTracks: stream.getVideoTracks().length,
+          audioTracks: stream.getAudioTracks().length,
+          videoTrackLabel: stream.getVideoTracks()[0]?.label || 'none',
+        });
       } catch (err) {
-        console.warn("Video capture failed; falling back to audio-only", err);
+        console.error("Video capture failed:", err);
+        logActivity('connection', `Video failed: ${err instanceof Error ? err.message : 'Unknown error'} - using audio only`);
+        toast({
+          title: "Camera Unavailable",
+          description: "Using audio-only mode. Check camera permissions.",
+          variant: "destructive",
+        });
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
 
@@ -628,19 +644,29 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
       }));
 
       // Setup Video Preview (if available)
+      console.log('Setting up video preview, hasVideo:', hasVideo);
+      
       if (videoRef.current) {
         videoRef.current.srcObject = hasVideo ? stream : null;
+        console.log('Video srcObject set:', hasVideo ? 'stream assigned' : 'null');
       }
 
       if (hasVideo && videoRef.current) {
         setIsCameraActive(true);
+        logActivity('connection', `Camera active: ${stream.getVideoTracks()[0]?.label || 'Unknown camera'}`);
         try {
           await videoRef.current.play();
+          console.log('Video playback started successfully');
         } catch (playError) {
           console.warn('Autoplay blocked, video will play on user interaction:', playError);
+          logActivity('connection', 'Video autoplay blocked - tap to start');
         }
       } else {
         setIsCameraActive(false);
+        console.log('Camera inactive - no video tracks available');
+        if (!hasVideo) {
+          logActivity('connection', 'No video tracks - audio only mode');
+        }
       }
 
       // Audio Source and Analyzer
