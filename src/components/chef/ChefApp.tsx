@@ -588,7 +588,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
       const ai = new GoogleGenAI({ apiKey });
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction: buildSystemInstruction(),
@@ -770,7 +770,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
   return (
     <div className="min-h-screen bg-background text-foreground p-4 flex flex-col items-center">
       <Header />
-      
+
       <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-6xl mt-4">
         {/* Left Column: Recipes - ALWAYS accessible */}
         <section className="lg:col-span-1 order-3 lg:order-1">
@@ -800,7 +800,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               </div>
               <h2 className="text-xl font-bold text-foreground mb-2">Chef G-Mini</h2>
               <p className="text-sm text-muted-foreground mb-4">
-                {activeRecipe 
+                {activeRecipe
                   ? `Ready to guide you through "${activeRecipe.title}"`
                   : "Add a recipe or start cooking freestyle"
                 }
