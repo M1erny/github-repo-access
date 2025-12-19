@@ -1034,8 +1034,21 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
 
         {/* Center Column: Vision & Connection */}
         <section className="lg:col-span-1 flex flex-col gap-4 order-1 lg:order-2">
-          {/* Show welcome hero when not connected, camera when connected */}
-          {!isConnected ? (
+          {/* Show camera when connecting or connected, otherwise welcome hero */}
+          {isConnecting || isConnected ? (
+            <CameraFeed
+              ref={videoRef}
+              isConnected={isConnected}
+              isCameraActive={isCameraActive}
+              cameraError={cameraError}
+              canvasRef={canvasRef}
+              cameras={cameras}
+              currentCameraIndex={currentCameraIndex}
+              useWideAngle={useWideAngle}
+              onSwitchCamera={switchCamera}
+              onToggleWideAngle={toggleWideAngle}
+            />
+          ) : (
             <div className="aspect-video bg-card rounded-2xl border border-border shadow-lg flex flex-col items-center justify-center p-6 text-center">
               <div className="relative mb-4">
                 <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-pulse" />
@@ -1055,19 +1068,6 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
                 <span className="flex items-center gap-1"><Mic className="w-3 h-3" /> Voice</span>
               </div>
             </div>
-          ) : (
-            <CameraFeed
-              ref={videoRef}
-              isConnected={isConnected}
-              isCameraActive={isCameraActive}
-              cameraError={cameraError}
-              canvasRef={canvasRef}
-              cameras={cameras}
-              currentCameraIndex={currentCameraIndex}
-              useWideAngle={useWideAngle}
-              onSwitchCamera={switchCamera}
-              onToggleWideAngle={toggleWideAngle}
-            />
           )}
 
           {/* Controls */}
