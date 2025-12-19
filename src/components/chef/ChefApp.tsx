@@ -515,7 +515,9 @@ Please update your context to this recipe.`
 
   // Build system instruction with active recipe context
   const buildSystemInstruction = () => {
-    let instruction = `You are Chef G-Mini, a helpful cooking assistant.
+    let instruction = `You are Chef G-Mini, a helpful cooking assistant powered by Gemini 2.5 Flash Native Audio.
+
+IMPORTANT: Your knowledge cutoff is January 2025. You have up-to-date information about cooking, recipes, ingredients, and techniques.
 
 CRITICAL RULE - RECIPE ACCURACY:
 When a user asks about the recipe, ingredients, steps, timing, or anything recipe-related, you MUST:
@@ -537,9 +539,11 @@ When you receive a [TIMER ALERT] message, IMMEDIATELY respond by:
 3. If there's a recipe active, call getActiveRecipe to reference the next relevant step
 4. Be concise and urgent - this is a time-sensitive moment
 
-VISION LOGGING:
+VISION/VIDEO INPUT:
+- You can SEE through the user's camera if video is enabled
 - Call 'logObservation' every 5-10 seconds when you notice cooking activity
 - Focus on cooking actions: "adding ingredients", "stirring", "checking doneness"
+- Proactively comment on what you see in the video feed
 
 CONVERSATION STYLE:
 - Be helpful and conversational
@@ -607,6 +611,15 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
         console.log('Requesting video + audio for Live API...');
         console.log('Device ID:', deviceId || 'default');
         
+        // First check if camera is available
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        console.log('Available video devices:', videoDevices.length, videoDevices.map(d => d.label));
+        
+        if (videoDevices.length === 0) {
+          throw new Error('No camera found on this device');
+        }
+        
         stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: {
@@ -625,11 +638,12 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
         });
         logActivity('connection', `Camera: ${stream.getVideoTracks()[0]?.label || 'active'}`);
       } catch (err) {
-        console.error("Video capture failed:", err);
-        logActivity('connection', `Video failed: ${err instanceof Error ? err.message : 'Unknown error'} - using audio only`);
+        const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+        console.error("Video capture failed:", errorMsg, err);
+        logActivity('connection', `Camera failed: ${errorMsg}`);
         toast({
           title: "Camera Unavailable",
-          description: "Using audio-only mode. Check camera permissions.",
+          description: `${errorMsg}. Using audio-only mode.`,
           variant: "destructive",
         });
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
