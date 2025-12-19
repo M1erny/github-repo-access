@@ -3,6 +3,9 @@ project_id = "obaiztdbaypwnahdzsls"
 [functions.get-gemini-key]
 verify_jwt = false
 
+[functions.get-gemini-token]
+verify_jwt = false
+
 [functions.parse-recipe]
 verify_jwt = false
 
