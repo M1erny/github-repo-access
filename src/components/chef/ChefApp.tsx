@@ -114,6 +114,19 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   useEffect(() => {
     activeRecipeRef.current = activeRecipe;
     setCurrentStep(0); // Reset step when recipe changes
+
+    // If we have an active session, inform the AI about the recipe change
+    if (sessionPromiseRef.current && activeRecipe) {
+      sessionPromiseRef.current.then(session => {
+        session.sendRealtimeInput({
+          text: `[SYSTEM UPDATE] The user has selected a new recipe: "${activeRecipe.title}".
+Ingredients: ${activeRecipe.ingredients.join(', ')}
+Instructions: ${activeRecipe.instructions.join('\n')}
+Please update your context to this recipe.`
+        });
+        console.log('Sent recipe context update to AI');
+      });
+    }
   }, [activeRecipe]);
 
   useEffect(() => {
@@ -482,7 +495,8 @@ VISION LOGGING:
 CONVERSATION STYLE:
 - Be helpful and conversational
 - When guiding through a recipe, reference exact step numbers and ingredients
-- Proactively suggest the next step when you see them complete one`;
+- Proactively suggest the next step when you see them complete one
+- IMPORTANT: ALWAYS speak in English, regardless of what language the user speaks or the recipe language.`;
 
     if (activeRecipeRef.current) {
       instruction += `
@@ -802,22 +816,29 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
       sessionPromiseRef.current = sessionPromise;
 
       // --- Video Streaming Loop ---
+      // Send frames more frequently (was 1000ms, now 200ms for smoother vision)
       if (hasVideo) {
         videoIntervalRef.current = window.setInterval(async () => {
           if (!videoRef.current || !canvasRef.current || !sessionPromiseRef.current) return;
 
           const video = videoRef.current;
-          if (!video.videoWidth || !video.videoHeight) return;
+          if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
           const canvas = canvasRef.current;
           const ctx = canvas.getContext('2d');
           if (!ctx) return;
 
-          canvas.width = video.videoWidth * 0.5;
-          canvas.height = video.videoHeight * 0.5;
+          // Use fixed resolution for consistency
+          const targetWidth = 640;
+          const aspectRatio = video.videoWidth / video.videoHeight;
+          const targetHeight = targetWidth / aspectRatio;
+
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-          const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+          const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
 
           sessionPromiseRef.current.then(session => {
             session.sendRealtimeInput({
@@ -827,7 +848,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               }
             });
           });
-        }, 1000);
+        }, 200);
       }
 
     } catch (e: unknown) {
