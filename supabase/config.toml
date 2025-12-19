@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.analyze-vision]
 verify_jwt = false
+
+[functions.elevenlabs-tts]
+verify_jwt = false

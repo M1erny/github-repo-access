@@ -19,8 +19,9 @@ import { supabase } from '@/integrations/supabase/client';
 
 // Constants for model configuration
 // Using native audio model - supports text, audio, AND video according to Live API docs
-const GEMINI_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+const GEMINI_MODEL = 'gemini-2.5-flash-preview-native-audio-dialog';
 const API_VERSION = 'v1alpha';
+const ELEVENLABS_VOICE_ID = '1Sm6eJK7WHN2HvuFSr1U';
 
 // --- Tool Definitions ---
 const createTimerTool: FunctionDeclaration = {
@@ -736,16 +737,11 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
       const sessionPromise = ai.live.connect({
         model: GEMINI_MODEL,
         config: {
-          responseModalities: [Modality.AUDIO],
+          responseModalities: [Modality.TEXT], // Text only - we use ElevenLabs for voice
           thinkingConfig: {
             thinkingBudget: 1024,
             includeThoughts: true
           },
-          enableAffectiveDialog: true,
-          proactivity: {
-            proactiveAudio: true
-          },
-          outputAudioTranscription: {},
           inputAudioTranscription: {},
           systemInstruction: buildSystemInstruction(),
           tools: [
@@ -816,44 +812,78 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               }
             }
 
-            if (msg.serverContent?.outputTranscription) {
-              const text = msg.serverContent.outputTranscription.text;
-              if (text) {
-                setLogs((prev) => [...prev.slice(-19), {
-                  time: new Date().toLocaleTimeString(),
-                  text: `🤖 Chef: ${text}`
-                }]);
-                logActivity('output', `AI: "${text.slice(0, 50)}${text.length > 50 ? '...' : ''}"`);
-                setDiagnosticInfo(prev => ({ ...prev, messagesReceived: prev.messagesReceived + 1 }));
-              }
-            }
+            // Handle Text Output from Gemini - send to ElevenLabs for TTS
+            const textPart = msg.serverContent?.modelTurn?.parts?.find(p => p.text);
+            if (textPart?.text) {
+              const responseText = textPart.text;
+              
+              // Log the response
+              setLogs((prev) => [...prev.slice(-19), {
+                time: new Date().toLocaleTimeString(),
+                text: `🤖 Chef: ${responseText}`
+              }]);
+              logActivity('output', `AI: "${responseText.slice(0, 50)}${responseText.length > 50 ? '...' : ''}"`);
+              setDiagnosticInfo(prev => ({ ...prev, messagesReceived: prev.messagesReceived + 1 }));
 
-            // Handle Audio Output
-            const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (audioData) {
+              // Send to ElevenLabs for TTS
               setIsSpeaking(true);
               setIsListening(false);
               setIsProcessing(false);
-              const buffer = await decodeAudioData(base64ToUint8Array(audioData), outputCtx);
-              const bufferSource = outputCtx.createBufferSource();
-              bufferSource.buffer = buffer;
-              bufferSource.connect(outputCtx.destination);
 
-              const now = outputCtx.currentTime;
-              if (nextStartTimeRef.current < now) {
-                nextStartTimeRef.current = now;
-              }
-              bufferSource.start(nextStartTimeRef.current);
-              nextStartTimeRef.current += buffer.duration;
+              try {
+                const ttsResponse = await fetch(
+                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+                    },
+                    body: JSON.stringify({ text: responseText, voiceId: ELEVENLABS_VOICE_ID }),
+                  }
+                );
 
-              sourcesRef.current.add(bufferSource);
-              bufferSource.onended = () => {
-                sourcesRef.current.delete(bufferSource);
-                if (sourcesRef.current.size === 0) {
-                  setIsSpeaking(false);
-                  setIsListening(true);
+                if (!ttsResponse.ok) {
+                  throw new Error(`TTS failed: ${ttsResponse.status}`);
                 }
-              };
+
+                // Stream and play the PCM audio
+                const audioBuffer = await ttsResponse.arrayBuffer();
+                const pcmData = new Int16Array(audioBuffer);
+                const frameCount = pcmData.length;
+                const buffer = outputCtx.createBuffer(1, frameCount, 24000);
+                const channelData = buffer.getChannelData(0);
+                
+                for (let i = 0; i < frameCount; i++) {
+                  channelData[i] = pcmData[i] / 32768.0;
+                }
+
+                const bufferSource = outputCtx.createBufferSource();
+                bufferSource.buffer = buffer;
+                bufferSource.connect(outputCtx.destination);
+
+                const now = outputCtx.currentTime;
+                if (nextStartTimeRef.current < now) {
+                  nextStartTimeRef.current = now;
+                }
+                bufferSource.start(nextStartTimeRef.current);
+                nextStartTimeRef.current += buffer.duration;
+
+                sourcesRef.current.add(bufferSource);
+                bufferSource.onended = () => {
+                  sourcesRef.current.delete(bufferSource);
+                  if (sourcesRef.current.size === 0) {
+                    setIsSpeaking(false);
+                    setIsListening(true);
+                  }
+                };
+              } catch (ttsError) {
+                console.error('ElevenLabs TTS error:', ttsError);
+                logActivity('connection', `TTS failed: ${ttsError}`);
+                setIsSpeaking(false);
+                setIsListening(true);
+              }
             }
 
             // Handle Tool Calls - show processing state
