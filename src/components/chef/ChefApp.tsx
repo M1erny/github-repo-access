@@ -588,7 +588,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
       const ai = new GoogleGenAI({ apiKey });
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-preview-native-audio-dialog',
+        model: 'gemini-live-2.5-flash-native-audio',
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction: buildSystemInstruction(),
