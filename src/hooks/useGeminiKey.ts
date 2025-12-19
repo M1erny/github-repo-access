@@ -11,17 +11,18 @@ export const useGeminiKey = () => {
       try {
         setLoading(true);
         setError(null);
-        
-        const { data, error: fnError } = await supabase.functions.invoke('get-gemini-key');
-        
+
+        // Fetch an ephemeral token for Gemini Live (safer than exposing the long-lived key)
+        const { data, error: fnError } = await supabase.functions.invoke('get-gemini-token');
+
         if (fnError) {
-          console.error('Error fetching Gemini API key:', fnError);
-          setError('Failed to fetch API key. Please try again.');
+          console.error('Error fetching Gemini token:', fnError);
+          setError('Failed to fetch token. Please try again.');
           return;
         }
-        
-        if (data?.apiKey) {
-          setApiKey(data.apiKey);
+
+        if (data?.token) {
+          setApiKey(data.token);
         } else if (data?.error) {
           setError(data.error);
         }
