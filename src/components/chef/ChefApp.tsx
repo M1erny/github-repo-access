@@ -68,6 +68,7 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -165,28 +166,25 @@ Please update your context to this recipe.`
     currentStepRef.current = currentStep;
   }, [currentStep]);
 
-  // Enumerate available cameras on mount (graceful - don't block if no camera)
+  // Enumerate available cameras on mount (no permission prompts)
   useEffect(() => {
     const enumerateCameras = async () => {
       try {
-        // Check if mediaDevices is available
-        if (!navigator.mediaDevices?.getUserMedia) {
+        if (!navigator.mediaDevices?.enumerateDevices) {
           console.warn('MediaDevices API not available');
           return;
         }
-        // Request permission first to get device labels
-        const testStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        testStream.getTracks().forEach(t => t.stop());
-        
+
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter(d => d.kind === 'videoinput');
         setCameras(videoDevices);
         console.log('Found cameras:', videoDevices.length);
       } catch (e) {
-        // Camera not available is OK - we'll fall back to audio-only
-        console.warn('Could not enumerate cameras (will use audio-only):', e);
+        // Some browsers may block this before permission; that's OK.
+        console.warn('Could not enumerate cameras yet:', e);
       }
     };
+
     enumerateCameras();
   }, []);
 
@@ -610,16 +608,17 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
       try {
         console.log('Requesting video + audio for Live API...');
         console.log('Device ID:', deviceId || 'default');
-        
-        // First check if camera is available
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(d => d.kind === 'videoinput');
-        console.log('Available video devices:', videoDevices.length, videoDevices.map(d => d.label));
-        
-        if (videoDevices.length === 0) {
-          throw new Error('No camera found on this device');
+
+        // NOTE: Some browsers hide cameras until permission is granted,
+        // so we log this for debugging but don't treat "0" as "no camera".
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(d => d.kind === 'videoinput');
+          console.log('Video devices (may be hidden until permission):', videoDevices.length, videoDevices.map(d => d.label));
+        } catch (e) {
+          console.warn('enumerateDevices failed:', e);
         }
-        
+
         stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: {
@@ -630,7 +629,17 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
             ...(useWideAngle ? { aspectRatio: { ideal: 16 / 9 } } : {}),
           },
         });
-        
+
+        setCameraError(null);
+
+        // Refresh camera list after permission (to get labels)
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          setCameras(devices.filter(d => d.kind === 'videoinput'));
+        } catch {
+          // ignore
+        }
+
         console.log('Media stream obtained:', {
           videoTracks: stream.getVideoTracks().length,
           audioTracks: stream.getAudioTracks().length,
@@ -639,12 +648,13 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
         logActivity('connection', `Camera: ${stream.getVideoTracks()[0]?.label || 'active'}`);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-        console.error("Video capture failed:", errorMsg, err);
+        setCameraError(errorMsg);
+        console.error('Video capture failed:', errorMsg, err);
         logActivity('connection', `Camera failed: ${errorMsg}`);
         toast({
-          title: "Camera Unavailable",
+          title: 'Camera Unavailable',
           description: `${errorMsg}. Using audio-only mode.`,
-          variant: "destructive",
+          variant: 'destructive',
         });
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
@@ -1050,6 +1060,7 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               ref={videoRef}
               isConnected={isConnected}
               isCameraActive={isCameraActive}
+              cameraError={cameraError}
               canvasRef={canvasRef}
               cameras={cameras}
               currentCameraIndex={currentCameraIndex}
