@@ -12,7 +12,7 @@ import { ConversationIndicator } from './ConversationIndicator';
 import { TimerSection } from './TimerSection';
 import { RecipePanel } from './RecipePanel';
 import { ActiveRecipeCard } from './ActiveRecipeCard';
-import { DiagnosticPanel, DiagnosticInfo } from './DiagnosticPanel';
+import { DiagnosticPanel, DiagnosticInfo, ModelActivity } from './DiagnosticPanel';
 import { useRecipes, Recipe } from '@/hooks/useRecipes';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -89,7 +89,21 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
     hasVideo: false,
     hasAudio: false,
     lastError: null,
+    messagesSent: 0,
+    messagesReceived: 0,
+    lastActivity: null,
+    activityLog: [],
   });
+  
+  // Helper to log model activity
+  const logActivity = (type: ModelActivity['type'], message: string) => {
+    const activity: ModelActivity = { type, message, timestamp: new Date() };
+    setDiagnosticInfo(prev => ({
+      ...prev,
+      lastActivity: activity,
+      activityLog: [...prev.activityLog.slice(-9), activity], // Keep last 10
+    }));
+  };
 
   // Derived conversation state
   const conversationState = isSpeaking ? 'speaking' : isProcessing ? 'processing' : isListening ? 'listening' : 'idle';
@@ -690,12 +704,16 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
             setIsListening(true); // Start in listening mode
             console.log("Gemini Live Session Opened with model:", GEMINI_MODEL);
             
-            // Update diagnostics
+            // Update diagnostics and log connection
             setDiagnosticInfo(prev => ({
               ...prev,
               connectionStatus: 'connected',
               sessionStartTime: new Date(),
+              messagesSent: 0,
+              messagesReceived: 0,
+              activityLog: [],
             }));
+            logActivity('connection', `Connected to ${GEMINI_MODEL}`);
             
             toast({
               title: "Connected",
@@ -737,6 +755,8 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
                   time: new Date().toLocaleTimeString(),
                   text: `🎤 You: ${text}`
                 }]);
+                logActivity('input', `User: "${text.slice(0, 50)}${text.length > 50 ? '...' : ''}"`);
+                setDiagnosticInfo(prev => ({ ...prev, messagesSent: prev.messagesSent + 1 }));
               }
             }
 
@@ -747,6 +767,8 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
                   time: new Date().toLocaleTimeString(),
                   text: `🤖 Chef: ${text}`
                 }]);
+                logActivity('output', `AI: "${text.slice(0, 50)}${text.length > 50 ? '...' : ''}"`);
+                setDiagnosticInfo(prev => ({ ...prev, messagesReceived: prev.messagesReceived + 1 }));
               }
             }
 
@@ -785,6 +807,9 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
               const responses = [];
               for (const fc of msg.toolCall.functionCalls) {
                 let result: Record<string, unknown> = { result: "ok" };
+                
+                // Log tool call activity
+                logActivity('tool_call', `Tool: ${fc.name}`);
 
                 if (fc.name === 'createTimer') {
                   const { label, durationSeconds } = fc.args as { label: string; durationSeconds: number };
