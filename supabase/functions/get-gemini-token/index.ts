@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { GoogleGenAI, Modality } from "npm:@google/genai@1.30.0";
+import { GoogleGenAI } from "npm:@google/genai@1.30.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -34,17 +34,10 @@ serve(async (req) => {
 
     const token = await client.authTokens.create({
       config: {
-        uses: 10,
+        uses: 100, // Allow many reconnection attempts
         expireTime,
         newSessionExpireTime,
-        // Lock token to our Live connection config (more secure).
-        liveConnectConstraints: {
-          model: "gemini-2.5-flash-native-audio-preview-09-2025",
-          config: {
-            responseModalities: [Modality.AUDIO],
-          },
-        },
-        httpOptions: { apiVersion: "v1alpha" },
+        // Don't lock to specific model - allow flexibility
       },
     });
 

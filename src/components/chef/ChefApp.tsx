@@ -12,9 +12,14 @@ import { ConversationIndicator } from './ConversationIndicator';
 import { TimerSection } from './TimerSection';
 import { RecipePanel } from './RecipePanel';
 import { ActiveRecipeCard } from './ActiveRecipeCard';
+import { DiagnosticPanel, DiagnosticInfo } from './DiagnosticPanel';
 import { useRecipes, Recipe } from '@/hooks/useRecipes';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+
+// Constants for model configuration
+const GEMINI_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+const API_VERSION = 'v1alpha';
 
 // --- Tool Definitions ---
 const createTimerTool: FunctionDeclaration = {
@@ -74,6 +79,17 @@ export const ChefApp: React.FC<ChefAppProps> = ({ apiKey }) => {
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
   const [useWideAngle, setUseWideAngle] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnosticInfo, setDiagnosticInfo] = useState<DiagnosticInfo>({
+    connectionStatus: 'disconnected',
+    modelName: GEMINI_MODEL,
+    apiVersion: API_VERSION,
+    tokenUsage: { inputTokens: 0, outputTokens: 0 },
+    sessionStartTime: null,
+    hasVideo: false,
+    hasAudio: false,
+    lastError: null,
+  });
 
   // Derived conversation state
   const conversationState = isSpeaking ? 'speaking' : isProcessing ? 'processing' : isListening ? 'listening' : 'idle';
@@ -133,17 +149,26 @@ Please update your context to this recipe.`
     currentStepRef.current = currentStep;
   }, [currentStep]);
 
-  // Enumerate available cameras on mount
+  // Enumerate available cameras on mount (graceful - don't block if no camera)
   useEffect(() => {
     const enumerateCameras = async () => {
       try {
+        // Check if mediaDevices is available
+        if (!navigator.mediaDevices?.getUserMedia) {
+          console.warn('MediaDevices API not available');
+          return;
+        }
         // Request permission first to get device labels
-        await navigator.mediaDevices.getUserMedia({ video: true }).then(s => s.getTracks().forEach(t => t.stop()));
+        const testStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        testStream.getTracks().forEach(t => t.stop());
+        
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter(d => d.kind === 'videoinput');
         setCameras(videoDevices);
+        console.log('Found cameras:', videoDevices.length);
       } catch (e) {
-        console.warn('Could not enumerate cameras:', e);
+        // Camera not available is OK - we'll fall back to audio-only
+        console.warn('Could not enumerate cameras (will use audio-only):', e);
       }
     };
     enumerateCameras();
@@ -192,6 +217,14 @@ Please update your context to this recipe.`
     setIsListening(false);
     setIsProcessing(false);
     setVolume(0);
+    
+    // Update diagnostics
+    setDiagnosticInfo(prev => ({
+      ...prev,
+      connectionStatus: 'disconnected',
+      hasVideo: false,
+      hasAudio: false,
+    }));
   }, []);
 
   // --- Timer Tick Logic ---
@@ -531,6 +564,13 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
     setIsConnecting(true);
     setError(null);
     setLogs([]);
+    
+    // Update diagnostics to connecting state
+    setDiagnosticInfo(prev => ({
+      ...prev,
+      connectionStatus: 'connecting',
+      lastError: null,
+    }));
 
     try {
       // Initialize Audio Contexts
@@ -564,6 +604,14 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
 
       mediaStreamRef.current = stream;
       const hasVideo = stream.getVideoTracks().length > 0;
+      const hasAudio = stream.getAudioTracks().length > 0;
+      
+      // Update diagnostics with media info
+      setDiagnosticInfo(prev => ({
+        ...prev,
+        hasVideo,
+        hasAudio,
+      }));
 
       // Setup Video Preview (if available)
       if (videoRef.current) {
@@ -640,7 +688,15 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
             setIsConnected(true);
             setIsConnecting(false);
             setIsListening(true); // Start in listening mode
-            console.log("Gemini Live Session Opened");
+            console.log("Gemini Live Session Opened with model:", GEMINI_MODEL);
+            
+            // Update diagnostics
+            setDiagnosticInfo(prev => ({
+              ...prev,
+              connectionStatus: 'connected',
+              sessionStartTime: new Date(),
+            }));
+            
             toast({
               title: "Connected",
               description: activeRecipeRef.current
@@ -774,9 +830,15 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
             const reason = (event as CloseEvent | undefined)?.reason;
             console.log("Gemini Live Session Closed", { code, reason, event });
 
-            setError(
-              `AI session closed${code ? ` (code ${code})` : ''}${reason ? `: ${reason}` : ''}`
-            );
+            const errorMsg = `AI session closed${code ? ` (code ${code})` : ''}${reason ? `: ${reason}` : ''}`;
+            setError(errorMsg);
+            
+            // Update diagnostics
+            setDiagnosticInfo(prev => ({
+              ...prev,
+              connectionStatus: 'disconnected',
+              lastError: errorMsg,
+            }));
 
             toast({
               title: "AI Disconnected",
@@ -789,7 +851,16 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
           },
           onerror: (err) => {
             console.error("Gemini Live Error", err);
-            setError(`Connection error: ${err?.message || 'Unknown error'}. Please try again.`);
+            const errorMsg = `Connection error: ${err?.message || 'Unknown error'}. Please try again.`;
+            setError(errorMsg);
+            
+            // Update diagnostics
+            setDiagnosticInfo(prev => ({
+              ...prev,
+              connectionStatus: 'disconnected',
+              lastError: errorMsg,
+            }));
+            
             toast({
               title: "Connection Error",
               description: err?.message || "Failed to connect to AI. Check your API key.",
@@ -971,6 +1042,13 @@ No recipe is currently selected. Help them freestyle or suggest adding a recipe.
           />
         </section>
       </main>
+      
+      {/* Diagnostic Panel */}
+      <DiagnosticPanel
+        info={diagnosticInfo}
+        isOpen={showDiagnostics}
+        onToggle={() => setShowDiagnostics(!showDiagnostics)}
+      />
     </div>
   );
 };
