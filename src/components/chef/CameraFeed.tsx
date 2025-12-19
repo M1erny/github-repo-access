@@ -6,6 +6,7 @@ import { SwitchCamera, Maximize2, Minimize2 } from 'lucide-react';
 interface CameraFeedProps {
   isConnected: boolean;
   isCameraActive: boolean;
+  cameraError?: string | null;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   cameras: MediaDeviceInfo[];
   currentCameraIndex: number;
@@ -15,7 +16,20 @@ interface CameraFeedProps {
 }
 
 export const CameraFeed = forwardRef<HTMLVideoElement, CameraFeedProps>(
-  ({ isConnected, isCameraActive, canvasRef, cameras, currentCameraIndex, useWideAngle, onSwitchCamera, onToggleWideAngle }, ref) => {
+  (
+    {
+      isConnected,
+      isCameraActive,
+      cameraError,
+      canvasRef,
+      cameras,
+      currentCameraIndex,
+      useWideAngle,
+      onSwitchCamera,
+      onToggleWideAngle,
+    },
+    ref
+  ) => {
     return (
       <div className="relative aspect-video bg-background rounded-2xl overflow-hidden border border-border shadow-2xl">
         <video
@@ -109,7 +123,11 @@ export const CameraFeed = forwardRef<HTMLVideoElement, CameraFeedProps>(
             </div>
             <p className="text-muted-foreground text-sm font-medium">Camera inactive</p>
             <p className="text-muted-foreground/70 text-xs text-center px-4">
-              {isConnected ? "No video - audio only mode" : "Start cooking session to enable camera"}
+              {cameraError
+                ? `Camera error: ${cameraError}`
+                : isConnected
+                  ? "No video - audio only mode"
+                  : "Start cooking session to enable camera"}
             </p>
           </div>
         )}
