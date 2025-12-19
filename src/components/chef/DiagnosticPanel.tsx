@@ -1,6 +1,12 @@
-import React from 'react';
-import { Activity, Cpu, Clock, Camera, Mic, Wifi, WifiOff } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Activity, Cpu, Clock, Camera, Mic, Wifi, WifiOff, Zap, MessageSquare, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+export interface ModelActivity {
+  type: 'input' | 'output' | 'tool_call' | 'connection';
+  message: string;
+  timestamp: Date;
+}
 
 export interface DiagnosticInfo {
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
@@ -14,6 +20,10 @@ export interface DiagnosticInfo {
   hasVideo: boolean;
   hasAudio: boolean;
   lastError: string | null;
+  messagesSent: number;
+  messagesReceived: number;
+  lastActivity: ModelActivity | null;
+  activityLog: ModelActivity[];
 }
 
 interface DiagnosticPanelProps {
@@ -23,13 +33,26 @@ interface DiagnosticPanelProps {
 }
 
 export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ info, isOpen, onToggle }) => {
-  const formatDuration = (start: Date | null) => {
-    if (!start) return '--:--';
-    const diff = Math.floor((Date.now() - start.getTime()) / 1000);
-    const mins = Math.floor(diff / 60);
-    const secs = diff % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  const [sessionDuration, setSessionDuration] = useState('--:--');
+
+  // Update session duration every second
+  useEffect(() => {
+    if (!info.sessionStartTime) {
+      setSessionDuration('--:--');
+      return;
+    }
+
+    const updateDuration = () => {
+      const diff = Math.floor((Date.now() - info.sessionStartTime!.getTime()) / 1000);
+      const mins = Math.floor(diff / 60);
+      const secs = diff % 60;
+      setSessionDuration(`${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
+    };
+
+    updateDuration();
+    const interval = setInterval(updateDuration, 1000);
+    return () => clearInterval(interval);
+  }, [info.sessionStartTime]);
 
   const statusColor = {
     disconnected: 'text-red-500',
@@ -38,25 +61,45 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ info, isOpen, 
   };
 
   const StatusIcon = info.connectionStatus === 'connected' ? Wifi : WifiOff;
+  const isActive = info.lastActivity && (Date.now() - info.lastActivity.timestamp.getTime()) < 2000;
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
+      {/* Activity Indicator - always visible when active */}
+      {isActive && !isOpen && (
+        <div className="absolute -top-8 right-0 flex items-center gap-2 px-2 py-1 rounded bg-cyan-500/20 border border-cyan-500/30 animate-pulse">
+          <Zap className="w-3 h-3 text-cyan-400" />
+          <span className="text-[10px] text-cyan-300 font-mono truncate max-w-[150px]">
+            {info.lastActivity?.message}
+          </span>
+        </div>
+      )}
+
       {/* Toggle Button */}
       <button
         onClick={onToggle}
         className={cn(
           "flex items-center gap-2 px-3 py-2 rounded-full text-xs font-mono transition-all",
           "bg-black/80 backdrop-blur-sm border border-white/10 hover:border-white/20",
-          info.connectionStatus === 'connected' && "border-green-500/30"
+          info.connectionStatus === 'connected' && "border-green-500/30",
+          isActive && "border-cyan-500/50 shadow-[0_0_10px_rgba(0,255,255,0.3)]"
         )}
       >
-        <Activity className={cn("w-3 h-3", statusColor[info.connectionStatus])} />
+        <Activity className={cn(
+          "w-3 h-3 transition-colors",
+          isActive ? "text-cyan-400 animate-pulse" : statusColor[info.connectionStatus]
+        )} />
         <span className="text-white/70">Diagnostics</span>
+        {info.messagesReceived > 0 && (
+          <span className="bg-cyan-500/30 text-cyan-300 px-1.5 py-0.5 rounded text-[10px]">
+            {info.messagesReceived}
+          </span>
+        )}
       </button>
 
       {/* Panel */}
       {isOpen && (
-        <div className="absolute bottom-12 right-0 w-80 bg-black/90 backdrop-blur-md rounded-lg border border-white/10 p-4 shadow-xl">
+        <div className="absolute bottom-12 right-0 w-96 bg-black/90 backdrop-blur-md rounded-lg border border-white/10 p-4 shadow-xl max-h-[80vh] overflow-hidden flex flex-col">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
               <Cpu className="w-4 h-4 text-blue-400" />
@@ -77,7 +120,7 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ info, isOpen, 
             {/* Model */}
             <div className="flex justify-between items-center">
               <span className="text-white/50">Model</span>
-              <span className="text-cyan-400 text-right max-w-[180px] truncate" title={info.modelName}>
+              <span className="text-cyan-400 text-right max-w-[220px] truncate" title={info.modelName}>
                 {info.modelName || 'N/A'}
               </span>
             </div>
@@ -94,7 +137,7 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ info, isOpen, 
                 <Clock className="w-3 h-3" />
                 Session
               </span>
-              <span className="text-orange-400">{formatDuration(info.sessionStartTime)}</span>
+              <span className="text-orange-400">{sessionDuration}</span>
             </div>
 
             {/* Media Status */}
@@ -112,15 +155,62 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ info, isOpen, 
               </div>
             </div>
 
-            {/* Token Usage */}
-            <div className="border-t border-white/10 pt-2 mt-2">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-white/50">Input Tokens</span>
-                <span className="text-yellow-400">{info.tokenUsage.inputTokens.toLocaleString()}</span>
+            {/* Message Stats */}
+            <div className="flex justify-between items-center">
+              <span className="text-white/50 flex items-center gap-1">
+                <MessageSquare className="w-3 h-3" />
+                Messages
+              </span>
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1 text-blue-400">
+                  <Send className="w-3 h-3" />
+                  {info.messagesSent}
+                </span>
+                <span className="flex items-center gap-1 text-green-400">
+                  ↓ {info.messagesReceived}
+                </span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/50">Output Tokens</span>
-                <span className="text-yellow-400">{info.tokenUsage.outputTokens.toLocaleString()}</span>
+            </div>
+
+            {/* Activity Log */}
+            <div className="border-t border-white/10 pt-2 mt-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-white/50 flex items-center gap-1">
+                  <Zap className="w-3 h-3" />
+                  Activity Log
+                </span>
+                <span className="text-white/30 text-[10px]">Last 10</span>
+              </div>
+              <div className="max-h-32 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-white/10">
+                {info.activityLog.length === 0 ? (
+                  <div className="text-white/30 text-[10px] text-center py-2">No activity yet</div>
+                ) : (
+                  [...info.activityLog].reverse().map((activity, i) => (
+                    <div 
+                      key={i} 
+                      className={cn(
+                        "flex items-start gap-2 text-[10px] p-1 rounded",
+                        activity.type === 'input' && "bg-blue-500/10",
+                        activity.type === 'output' && "bg-green-500/10",
+                        activity.type === 'tool_call' && "bg-purple-500/10",
+                        activity.type === 'connection' && "bg-yellow-500/10"
+                      )}
+                    >
+                      <span className="text-white/30 shrink-0">
+                        {activity.timestamp.toLocaleTimeString()}
+                      </span>
+                      <span className={cn(
+                        "truncate",
+                        activity.type === 'input' && "text-blue-300",
+                        activity.type === 'output' && "text-green-300",
+                        activity.type === 'tool_call' && "text-purple-300",
+                        activity.type === 'connection' && "text-yellow-300"
+                      )}>
+                        {activity.message}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
