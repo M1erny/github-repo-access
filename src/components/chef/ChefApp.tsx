@@ -19,7 +19,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 // Constants for model configuration
 // Using native audio model - supports text, audio, AND video according to Live API docs
-const GEMINI_MODEL = 'gemini-2.5-flash-preview-native-audio-dialog';
+const GEMINI_MODEL = 'gemini-2.0-flash-live-001';
 const API_VERSION = 'v1alpha';
 const ELEVENLABS_VOICE_ID = '1Sm6eJK7WHN2HvuFSr1U';
 
