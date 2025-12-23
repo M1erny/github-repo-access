@@ -12,6 +12,7 @@ export interface Recipe {
   instructions: string[] | null;
   created_at: string;
   updated_at: string;
+  user_id: string | null;
 }
 
 export const useRecipes = () => {
@@ -27,7 +28,7 @@ export const useRecipes = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRecipes(data || []);
+      setRecipes((data as Recipe[]) || []);
     } catch (err) {
       console.error('Error fetching recipes:', err);
       toast({
@@ -44,22 +45,32 @@ export const useRecipes = () => {
     fetchRecipes();
   }, [fetchRecipes]);
 
-  const addRecipe = async (recipe: Omit<Recipe, 'id' | 'created_at' | 'updated_at'>) => {
+  const addRecipe = async (recipe: Omit<Recipe, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to save recipes",
+          variant: "destructive",
+        });
+        return null;
+      }
+
       const { data, error } = await supabase
         .from('recipes')
-        .insert(recipe)
+        .insert({ ...recipe, user_id: user.id })
         .select()
         .single();
 
       if (error) throw error;
       
-      setRecipes(prev => [data, ...prev]);
+      setRecipes(prev => [data as Recipe, ...prev]);
       toast({
         title: "Recipe Saved",
         description: `"${recipe.title}" has been added to your collection`,
       });
-      return data;
+      return data as Recipe;
     } catch (err) {
       console.error('Error adding recipe:', err);
       toast({
@@ -138,21 +149,32 @@ export const useRecipes = () => {
 
   const parseRecipeFromFile = async (file: File): Promise<Partial<Recipe> | null> => {
     try {
-      // Upload file to storage
-      const fileName = `${Date.now()}-${file.name}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to upload files",
+          variant: "destructive",
+        });
+        return null;
+      }
+
+      // Upload file to user's folder for RLS compliance
+      const fileName = `${user.id}/${Date.now()}-${file.name}`;
+      const { error: uploadError } = await supabase.storage
         .from('recipe-files')
         .upload(fileName, file);
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
+      // Get signed URL since bucket is now private
+      const { data: urlData, error: urlError } = await supabase.storage
         .from('recipe-files')
-        .getPublicUrl(fileName);
+        .createSignedUrl(fileName, 3600);
+
+      if (urlError) throw urlError;
 
       // For images, we'll extract text using a simple approach
-      // For PDFs, we'd need more complex parsing
       let content = '';
       
       if (file.type.startsWith('image/')) {
@@ -167,7 +189,7 @@ export const useRecipes = () => {
         });
         content = `[Image content - base64 encoded image of a recipe]`;
       } else if (file.type === 'application/pdf') {
-        content = `[PDF content - please extract recipe from uploaded PDF at ${urlData.publicUrl}]`;
+        content = `[PDF content - please extract recipe from uploaded PDF at ${urlData.signedUrl}]`;
       } else {
         content = await file.text();
       }
@@ -183,7 +205,7 @@ export const useRecipes = () => {
       return {
         title: data.recipe.title,
         content: content.slice(0, 5000),
-        file_path: urlData.publicUrl,
+        file_path: fileName,
         ingredients: data.recipe.ingredients,
         instructions: data.recipe.instructions,
       };

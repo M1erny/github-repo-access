@@ -16,7 +16,7 @@ import { toast } from '@/hooks/use-toast';
 interface AddRecipeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddRecipe: (recipe: Omit<Recipe, 'id' | 'created_at' | 'updated_at'>) => Promise<unknown>;
+  onAddRecipe: (recipe: Omit<Recipe, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => Promise<unknown>;
   onParseUrl: (url: string) => Promise<Partial<Recipe> | null>;
   onParseFile: (file: File) => Promise<Partial<Recipe> | null>;
   onParseText: (text: string) => Promise<Partial<Recipe> | null>;
