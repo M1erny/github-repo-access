@@ -1,16 +1,13 @@
 project_id = "obaiztdbaypwnahdzsls"
 
-[functions.get-gemini-key]
-verify_jwt = false
-
 [functions.get-gemini-token]
-verify_jwt = false
+verify_jwt = true
 
 [functions.parse-recipe]
-verify_jwt = false
+verify_jwt = true
 
 [functions.analyze-vision]
-verify_jwt = false
+verify_jwt = true
 
 [functions.elevenlabs-tts]
-verify_jwt = false
+verify_jwt = true
